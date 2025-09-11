@@ -22,15 +22,13 @@ log = "0.4"
 # http response parsing
 httparse = { version = "1.10", optional = true }
 
-rustls = { version = "0.23", optional = true }
+rustls = "0.23"
 
-webpki = { version = "0.22.4", optional = true }
+webpki = "0.22.4"
 
-webpki-roots = { version = "1.0.2", optional = true }
+webpki-roots = "1.0.2"
 
 [features]
 default = []  # these are enabled in the main dog crate
 
 with_https = ["httparse"]
-
-with_rustls = ["rustls", "webpki-roots", "webpki"]

@@ -69,9 +69,7 @@ datetime = { version = "0.5.2", default-features = false }
 pretty_assertions = "1.4"
 
 [features]
-default = ["with_idna", "with_https", "with_rustls"]
+default = ["with_idna", "with_https"]
 with_idna = ["dns/with_idna"]
 
 with_https = ["dns-transport/with_https"]
-
-with_rustls = ["dns-transport/with_rustls"]

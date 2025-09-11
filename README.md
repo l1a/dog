@@ -135,10 +135,10 @@ For more information, read [the xtests README](xtests/README.md).
 
 ### Feature toggles
 
-dog has three Cargo features that can be switched off to remove functionality.
+dog has two Cargo features that can be switched off to remove functionality.
 While doing so makes dog less useful, it results in a smaller binary that takes less time to build.
 
-There are three feature toggles available, all of which are active by default:
+There are two feature toggles available, both of which are active by default:
 
 - `with_idna`, which enables [IDNA](https://en.wikipedia.org/wiki/Internationalized_domain_name) processing
 - `with_https`, which enables DNS-over-HTTPS (requires built-in TLS support)

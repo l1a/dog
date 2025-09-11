@@ -14,15 +14,12 @@ pub enum Error {
     TruncatedResponse,
 
     /// An error from the TLS library.
-    #[cfg(feature = "with_rustls")]
     RustlsError(rustls::Error),
 
     /// Provided dns name is not valid
-    #[cfg(feature = "with_rustls")]
     RustlsInvalidDnsNameError(webpki::InvalidDnsNameError),
 
     /// Provided dns name is not valid
-    #[cfg(feature = "with_rustls")]
     RustlsInvalidDnsNameError2(rustls::pki_types::InvalidDnsNameError),
 
     /// There was a problem decoding the response HTTP headers or body.
@@ -50,21 +47,18 @@ impl From<std::io::Error> for Error {
     }
 }
 
-#[cfg(feature = "with_rustls")]
 impl From<rustls::Error> for Error {
     fn from(inner: rustls::Error) -> Self {
         Self::RustlsError(inner)
     }
 }
 
-#[cfg(feature = "with_rustls")]
 impl From<webpki::InvalidDnsNameError> for Error {
     fn from(inner: webpki::InvalidDnsNameError) -> Self {
         Self::RustlsInvalidDnsNameError(inner)
     }
 }
 
-#[cfg(feature = "with_rustls")]
 impl From<rustls::pki_types::InvalidDnsNameError> for Error {
     fn from(inner: rustls::pki_types::InvalidDnsNameError) -> Self {
         Self::RustlsInvalidDnsNameError2(inner)
