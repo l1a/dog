@@ -1,13 +1,13 @@
-#![cfg_attr(not(feature = "tls"), allow(unused))]
+#![cfg_attr(not(feature = "with_tls"), allow(unused))]
 
-use std::net::TcpStream;
+
 use std::io::Write;
 
 use log::*;
 
 use dns::{Request, Response};
 use super::{Transport, Error, TcpTransport};
-use super::tls_stream::TlsStream;
+
 
 
 /// The **TLS transport**, which sends DNS wire data using TCP through an
@@ -40,10 +40,10 @@ impl Transport for TlsTransport {
                 let domain = parts.nth(0).unwrap();
                 let port = parts.last().unwrap().parse::<u16>().expect("Invalid port number");
 
-                Self::stream(domain, port)?
+                super::tls_stream::stream_tls(domain, port)?
             }
             else {
-                Self::stream(&*self.addr, 853)?
+                super::tls_stream::stream_tls(&*self.addr, 853)?
             };
 
 

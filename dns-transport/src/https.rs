@@ -1,14 +1,14 @@
-#![cfg_attr(not(feature = "https"), allow(unused))]
+#![cfg_attr(not(feature = "with_https"), allow(unused))]
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+
 
 use log::*;
 
 use dns::{Request, Response, WireError};
 use super::{Transport, Error};
 
-use super::tls_stream;
+
 
 /// The **HTTPS transport**, which sends DNS wire data inside HTTP packets
 /// encrypted with TLS, using TCP.
@@ -33,7 +33,7 @@ fn contains_header(buf: &[u8]) -> bool {
     find_subsequence(buf, &header_end).is_some()
 }
 
-use tls_stream::TlsStream;
+
 
 impl Transport for HttpsTransport {
 
@@ -42,7 +42,7 @@ impl Transport for HttpsTransport {
         let (domain, path) = self.split_domain().expect("Invalid HTTPS nameserver");
 
         info!("Opening TLS socket to {:?}", domain);
-        let mut stream = Self::stream(&domain, 443)?;
+        let mut stream = super::tls_stream::stream_tls(&domain, 443)?;
 
         debug!("Connected");
 
@@ -124,4 +124,3 @@ impl HttpsTransport {
 
 /// The User-Agent header sent with HTTPS requests.
 static USER_AGENT: &str = concat!("dog/", env!("CARGO_PKG_VERSION"));
-

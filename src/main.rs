@@ -181,13 +181,13 @@ fn disabled_feature_check(options: &Options) {
     use std::process::exit;
     use crate::connect::TransportType;
 
-    #[cfg(all(not(feature = "with_tls"), not(feature = "with_rustls_tls")))]
+    #[cfg(all(not(feature = "with_tls"), not(feature = "with_rustls")))]
     if options.requests.inputs.transport_types.contains(&TransportType::TLS) {
         eprintln!("dog: Cannot use '--tls': This version of dog has been compiled without TLS support");
         exit(exits::OPTIONS_ERROR);
     }
 
-    #[cfg(all(not(feature = "with_https"), not(feature = "with_rustls_https")))]
+    #[cfg(all(not(feature = "with_https"), not(feature = "with_rustls")))]
     if options.requests.inputs.transport_types.contains(&TransportType::HTTPS) {
         eprintln!("dog: Cannot use '--https': This version of dog has been compiled without HTTPS support");
         exit(exits::OPTIONS_ERROR);

@@ -44,21 +44,21 @@ fn main() -> io::Result<()> {
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Pretty version text
-    let mut f = File::create(&out.join("version.pretty.txt"))?;
+    let mut f = File::create(out.join("version.pretty.txt"))?;
     writeln!(f, "{}", convert_codes(&ver))?;
 
     // Bland version text
-    let mut f = File::create(&out.join("version.bland.txt"))?;
+    let mut f = File::create(out.join("version.bland.txt"))?;
     writeln!(f, "{}", strip_codes(&ver))?;
 
     // Pretty usage text
-    let mut f = File::create(&out.join("usage.pretty.txt"))?;
+    let mut f = File::create(out.join("usage.pretty.txt"))?;
     writeln!(f, "{}", convert_codes(&tagline))?;
     writeln!(f)?;
     write!(f, "{}", convert_codes(&usage))?;
 
     // Bland usage text
-    let mut f = File::create(&out.join("usage.bland.txt"))?;
+    let mut f = File::create(out.join("usage.bland.txt"))?;
     writeln!(f, "{}", strip_codes(&tagline))?;
     writeln!(f)?;
     write!(f, "{}", strip_codes(&usage))?;
@@ -90,7 +90,7 @@ fn git_hash() -> String {
 
     String::from_utf8_lossy(
         &Command::new("git")
-            .args(&["rev-parse", "--short", "HEAD"])
+            .args(["rev-parse", "--short", "HEAD"])
             .output().unwrap()
             .stdout).trim().to_string()
 }
@@ -127,7 +127,7 @@ fn version_string() -> String {
 
 /// Finds whether a feature is enabled by examining the Cargo variable.
 fn feature_enabled(name: &str) -> bool {
-    env::var(&format!("CARGO_FEATURE_{}", name))
+    env::var(format!("CARGO_FEATURE_{}", name))
         .map(|e| ! e.is_empty())
         .unwrap_or(false)
 }

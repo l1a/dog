@@ -51,7 +51,7 @@ impl Labels {
 
             let label_idn = label_to_ascii(label)
                     .map_err(|e| {
-                        warn!("Could not encode label {:?}: {:?}", label, e);
+                        warn!("Could not encode label {label:?}: {e:?}");
                         label
                     })?;
 
@@ -60,7 +60,7 @@ impl Labels {
                     segments.push((length, label_idn));
                 }
                 Err(e) => {
-                    warn!("Could not encode label {:?}: {}", label, e);
+                    warn!("Could not encode label {label:?}: {e}");
                     return Err(label);
                 }
             }
@@ -75,6 +75,7 @@ impl Labels {
     }
 
     /// Returns a new set of labels concatenating two names.
+    #[must_use]
     pub fn extend(&self, other: &Self) -> Self {
         let mut segments = self.segments.clone();
         segments.extend_from_slice(&other.segments);
@@ -85,7 +86,7 @@ impl Labels {
 impl fmt::Display for Labels {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (_, segment) in &self.segments {
-            write!(f, "{}.", segment)?;
+            write!(f, "{segment}.")?;
         }
 
         Ok(())
@@ -164,24 +165,24 @@ fn read_string_recursive(labels: &mut Labels, c: &mut Cursor<&[u8]>, recursions:
             let offset = u16::from_be_bytes([name_one, name_two]);
 
             if recursions.contains(&offset) {
-                warn!("Hit previous offset ({}) decoding string", offset);
+                warn!("Hit previous offset ({offset}) decoding string");
                 return Err(WireError::TooMuchRecursion(recursions.clone().into_boxed_slice()));
             }
 
             recursions.push(offset);
 
             if recursions.len() >= RECURSION_LIMIT {
-                warn!("Hit recursion limit ({}) decoding string", RECURSION_LIMIT);
+                warn!("Hit recursion limit ({RECURSION_LIMIT}) decoding string");
                 return Err(WireError::TooMuchRecursion(recursions.clone().into_boxed_slice()));
             }
 
-            trace!("Backtracking to offset {}", offset);
+            trace!("Backtracking to offset {offset}");
             let new_pos = c.position();
             c.set_position(u64::from(offset));
 
             read_string_recursive(labels, c, recursions)?;
 
-            trace!("Coming back to {}", new_pos);
+            trace!("Coming back to {new_pos}");
             c.set_position(new_pos);
             break;
         }
@@ -197,7 +198,7 @@ fn read_string_recursive(labels: &mut Labels, c: &mut Cursor<&[u8]>, recursions:
                 name_buf.push(c);
             }
 
-            let string = String::from_utf8_lossy(&*name_buf).to_string();
+            let string = String::from_utf8_lossy(&name_buf).to_string();
             labels.segments.push((byte, string));
         }
     }

@@ -23,7 +23,7 @@ pub struct Colours {
     pub loc: Style,
     pub mx: Style,
     pub ns: Style,
-    pub naptr: Style,
+
     pub openpgpkey: Style,
     pub opt: Style,
     pub ptr: Style,
@@ -57,7 +57,7 @@ impl Colours {
             hinfo: Yellow.normal(),
             loc: Yellow.normal(),
             mx: Cyan.normal(),
-            naptr: Green.normal(),
+
             ns: Red.normal(),
             openpgpkey: Cyan.normal(),
             opt: Purple.normal(),
