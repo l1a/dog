@@ -140,9 +140,7 @@ fn nonstandard_features_string() -> String {
         s.push("-idna");
     }
 
-    if ! feature_enabled("WITH_TLS") {
-        s.push("-tls");
-    }
+
 
     if ! feature_enabled("WITH_HTTPS") {
         s.push("-https");

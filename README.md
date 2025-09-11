@@ -141,10 +141,11 @@ While doing so makes dog less useful, it results in a smaller binary that takes 
 There are three feature toggles available, all of which are active by default:
 
 - `with_idna`, which enables [IDNA](https://en.wikipedia.org/wiki/Internationalized_domain_name) processing
-- `with_tls`, which enables DNS-over-TLS
-- `with_https`, which enables DNS-over-HTTPS (requires `with_tls`)
+- `with_https`, which enables DNS-over-HTTPS (requires built-in TLS support)
 
-Use `cargo` to build a binary that uses feature toggles. For example, to disable TLS and HTTPS support but keep IDNA support enabled, you can run:
+DNS-over-TLS support is now built-in and always available.
+
+Use `cargo` to build a binary that uses feature toggles. For example, to disable HTTPS support but keep IDNA support enabled, you can run:
 
     $ cargo build --no-default-features --features=with_idna
 

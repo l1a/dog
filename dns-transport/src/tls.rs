@@ -1,4 +1,4 @@
-#![cfg_attr(not(feature = "with_tls"), allow(unused))]
+
 
 
 use std::io::Write;
@@ -28,7 +28,6 @@ impl TlsTransport {
 
 impl Transport for TlsTransport {
 
-    #[cfg(feature = "with_tls")]
     fn send(&self, request: &Request) -> Result<Response, Error> {
         info!("Opening TLS socket");
 
@@ -63,10 +62,7 @@ impl Transport for TlsTransport {
         Ok(response)
     }
 
-    #[cfg(not(feature = "with_tls"))]
-    fn send(&self, request: &Request) -> Result<Response, Error> {
-        unreachable!("TLS feature disabled")
-    }
+
 }
 
 impl TlsTransport {
