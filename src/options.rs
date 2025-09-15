@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 use std::fmt;
+use std::net::IpAddr;
 
 use log::*;
 
@@ -219,7 +220,15 @@ impl Inputs {
             }
             else {
                 trace!("Got domain -> {:?}", &argument);
-                self.add_domain(&argument)?;
+
+                if let Ok(ip) = argument.parse::<IpAddr>() {
+                    let reverse_domain = reverse_lookup_domain(ip);
+                    self.add_domain(&reverse_domain)?;
+                    self.add_type(RecordType::PTR);
+                }
+                else {
+                    self.add_domain(&argument)?;
+                }
             }
         }
 
@@ -301,6 +310,25 @@ fn parse_class_name(input: &str) -> Option<QClass> {
     }
     else {
         None
+    }
+}
+
+fn reverse_lookup_domain(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) => {
+            let octets = v4.octets();
+            format!("{}.{}.{}.{}.in-addr.arpa", octets[3], octets[2], octets[1], octets[0])
+        }
+        IpAddr::V6(v6) => {
+            let mut reversed = String::new();
+            for octet in v6.octets().iter().rev() {
+                let nibble1 = octet & 0x0F;
+                let nibble2 = (octet >> 4) & 0x0F;
+                reversed.push_str(&format!("{:x}.{:x}.", nibble1, nibble2));
+            }
+            reversed.push_str("ip6.arpa");
+            reversed
+        }
     }
 }
 
