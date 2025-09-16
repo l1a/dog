@@ -46,7 +46,7 @@ QUERY OPTIONS
 : Host name or domain name to query.
 
 `-t`, `--type=TYPE`
-: Type of the DNS record being queried (`A`, `MX`, `NS`...)
+: Type of the DNS record being queried (`A`, `MX`, `NS`, `ANY`...)
 
 `-n`, `--nameserver=ADDR`
 : Address of the nameserver to send packets to.
@@ -196,7 +196,7 @@ When a response DNS packet contains a record of one of these known types, dog wi
 
 Records with a type number that does not map to any known record type will still be displayed. As they cannot be interpreted, their contents will be displayed as a series of numbers instead.
 
-dog also contains a list of record type names that it knows the type number of, but is not able to interpret, such as `IXFR` or `ANY` or `AFSDB`. These are acceptable as command-line arguments, meaning you can send an AFSDB request with ‘`dog AFSDB`’. However, their response contents will still be displayed as numbers. They may be supported in future versions of dog.
+dog also contains a list of record type names that it knows the type number of, but is not able to interpret, such as `IXFR` or `AFSDB`. These are acceptable as command-line arguments, meaning you can send an AFSDB request with ‘`dog AFSDB`’. However, their response contents will still be displayed as numbers. They may be supported in future versions of dog.
 
 
 PROTOCOL TWEAKS
