@@ -48,7 +48,7 @@ impl Options {
 
         // Query options
         opts.optmulti("q", "query",       "Host name or domain name to query", "HOST");
-        opts.optmulti("t", "type",        "Type of the DNS record being queried (A, MX, NS, ANY...)", "TYPE");
+        opts.optmulti("t", "type",        "Type of the DNS record being queried (A, MX, NS...)", "TYPE");
         opts.optmulti("n", "nameserver",  "Address of the nameserver to send packets to", "ADDR");
         opts.optmulti("",  "class",       "Network class of the DNS record being queried (IN, CH, HS)", "CLASS");
 
