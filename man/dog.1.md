@@ -150,6 +150,9 @@ dog understands and can interpret the following record types:
 `AAAA`
 : IPv6 addresses
 
+`ANY`
+: all cached records
+
 `CAA`
 : permitted certificate authorities
 
