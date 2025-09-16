@@ -151,7 +151,7 @@ dog understands and can interpret the following record types:
 : IPv6 addresses
 
 `ANY`
-: all cached records
+: all available records for a name
 
 `CAA`
 : permitted certificate authorities
