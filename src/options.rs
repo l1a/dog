@@ -165,6 +165,9 @@ impl Inputs {
             if record_name.eq_ignore_ascii_case("OPT") {
                 return Err(OptionsError::QueryTypeOPT);
             }
+            else if record_name.eq_ignore_ascii_case("ANY") {
+                self.record_types.extend(RecordType::all_record_types());
+            }
             else if let Some(record_type) = RecordType::from_type_name(&record_name) {
                 self.add_type(record_type);
             }
@@ -204,6 +207,10 @@ impl Inputs {
             else if is_constant_name(&argument) {
                 if argument.eq_ignore_ascii_case("OPT") {
                     return Err(OptionsError::QueryTypeOPT);
+                }
+                else if argument.eq_ignore_ascii_case("ANY") {
+                    trace!("Got qtype -> ANY");
+                    self.record_types.extend(RecordType::all_record_types());
                 }
                 else if let Some(class) = parse_class_name(&argument) {
                     trace!("Got qclass -> {:?}", &argument);
@@ -537,7 +544,6 @@ impl fmt::Display for OptionsError {
 mod test {
     use super::*;
     use pretty_assertions::assert_eq;
-    use dns::record::UnknownQtype;
 
     impl Inputs {
         fn fallbacks() -> Self {
@@ -646,11 +652,11 @@ mod test {
     }
 
     #[test]
-    fn domain_and_other_type() {
+    fn domain_and_any_type() {
         let options = Options::getopts(&[ "lookup.dog", "any" ]).unwrap();
         assert_eq!(options.requests.inputs, Inputs {
             domains:      vec![ Labels::encode("lookup.dog").unwrap() ],
-            record_types: vec![ RecordType::Other(UnknownQtype::from_type_name("ANY").unwrap()) ],
+            record_types: RecordType::all_record_types(),
             .. Inputs::fallbacks()
         });
     }

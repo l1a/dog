@@ -172,6 +172,31 @@ impl From<u16> for RecordType {
 
 impl RecordType {
 
+    /// Returns a list of all supported record types.
+    pub fn all_record_types() -> Vec<RecordType> {
+        vec![
+            RecordType::A,
+            RecordType::AAAA,
+            RecordType::CAA,
+            RecordType::CNAME,
+            RecordType::EUI48,
+            RecordType::EUI64,
+            RecordType::HINFO,
+            RecordType::LOC,
+            RecordType::MX,
+            RecordType::NAPTR,
+            RecordType::NS,
+            RecordType::OPENPGPKEY,
+            RecordType::PTR,
+            RecordType::SSHFP,
+            RecordType::SOA,
+            RecordType::SRV,
+            RecordType::TLSA,
+            RecordType::TXT,
+            RecordType::URI,
+        ]
+    }
+
     /// Determines the record type with a given name, or `None` if none is
     /// known. Matches names case-insensitively.
     pub fn from_type_name(type_name: &str) -> Option<Self> {
