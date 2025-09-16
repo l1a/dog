@@ -1,6 +1,6 @@
-all: build test xtests
-all-release: build-release test-release xtests-release
-all-quick: build-quick test-quick xtests-quick
+all: build test
+all-release: build-release test-release
+all-quick: build-quick test-quick
 
 export DOG_DEBUG := ""
 
@@ -54,36 +54,6 @@ export DOG_DEBUG := ""
     cargo +nightly mutagen --package dns --features=dns/with_mutagen
 
 
-#------------------------#
-# running extended tests #
-#------------------------#
-
-# run extended tests
-@xtests *args:
-    specsheet xtests/{options,live,madns}/*.toml -shide {{args}} \
-        -O cmd.target.dog="${CARGO_TARGET_DIR:-../../target}/debug/dog"
-
-# run extended tests (in release mode)
-@xtests-release *args:
-    specsheet xtests/{options,live,madns}/*.toml {{args}} \
-        -O cmd.target.dog="${CARGO_TARGET_DIR:-../../target}/release/dog"
-
-# run extended tests (omitting certain feature tests)
-@xtests-quick *args:
-    specsheet xtests/options/*.toml xtests/live/{basics,tcp}.toml -shide {{args}} \
-        -O cmd.target.dog="${CARGO_TARGET_DIR:-../../target}/debug/dog"
-
-# run extended tests against a local madns instance
-@xtests-madns-local *args:
-    env MADNS_ARGS="@localhost:5301 --tcp" \
-        specsheet xtests/madns/*.toml -shide {{args}} \
-            -O cmd.target.dog="${CARGO_TARGET_DIR:-../../target}/debug/dog"
-
-# display the number of extended tests that get run
-@count-xtests:
-    grep -F '[[cmd]]' -R xtests | wc -l
-
-
 #---------#
 # fuzzing #
 #---------#
@@ -125,12 +95,6 @@ export DOG_DEBUG := ""
 @unused-deps:
     command -v cargo-udeps >/dev/null || (echo "cargo-udeps not installed" && exit 1)
     cargo +nightly udeps
-
-# builds dog and runs extended tests with features disabled
-@feature-checks *args:
-    cargo build --no-default-features
-    specsheet xtests/features/none.toml -shide {{args}} \
-        -O cmd.target.dog="${CARGO_TARGET_DIR:-../../target}/debug/dog"
 
 # print versions of the necessary build tools
 @versions:
