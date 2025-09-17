@@ -79,7 +79,8 @@ impl Table {
                     output.push_str(&" ".repeat(ttl_len));
                 }
 
-                output.push_str(&format!(" {} \n", self.format_section(r.section), r.summary));
+                output.push_str(&format!(" {} {}
+", self.format_section(r.section), r.summary));
             }
         }
         output

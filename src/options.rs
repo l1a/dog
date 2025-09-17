@@ -76,6 +76,7 @@ impl Options {
         // Meta options
         opts.optflag ("v", "version",      "Print version information");
         opts.optflag ("?", "help",         "Print list of command-line options");
+        opts.optflag ("l", "list",         "List known DNS record types");
 
         let matches = match opts.parse(args) {
             Ok(m)  => m,
@@ -89,6 +90,9 @@ impl Options {
         }
         else if matches.opt_present("help") {
             OptionsResult::Help(HelpReason::Flag, uc)
+        }
+        else if matches.opt_present("list") {
+            OptionsResult::ListTypes
         }
         else {
             match Self::deduce(matches) {
@@ -137,6 +141,9 @@ pub struct Inputs {
 
     /// The list of DNS record types to query for.
     pub record_types: Vec<RecordType>,
+
+    /// Whether the user requested an "ANY" query.
+    pub any_query: bool,
 }
 
 
@@ -157,7 +164,10 @@ impl Inputs {
         }
 
         for record_name in matches.opt_strs("type") {
-            if let Ok(record_type) = record_name.to_uppercase().parse() {
+            if record_name.eq_ignore_ascii_case("ANY") {
+                self.add_any_record_types();
+            }
+            else if let Ok(record_type) = record_name.to_uppercase().parse() {
                 self.add_type(record_type);
             }
             else {
@@ -175,7 +185,10 @@ impl Inputs {
                 trace!("Got nameserver -> {:?}", nameserver);
             }
             else if is_constant_name(&argument) {
-                if let Ok(record_type) = argument.to_uppercase().parse() {
+                if argument.eq_ignore_ascii_case("ANY") {
+                    self.add_any_record_types();
+                }
+                else if let Ok(record_type) = argument.to_uppercase().parse() {
                     trace!("Got qtype -> {:?}", &argument);
                     self.add_type(record_type);
                 }
@@ -216,6 +229,28 @@ impl Inputs {
     /// Add a record type to the list of record types to query.
     fn add_type(&mut self, rt: RecordType) {
         self.record_types.push(rt);
+    }
+
+    /// Add a list of common record types to the list of record types to query.
+    fn add_any_record_types(&mut self) {
+        self.any_query = true;
+        self.record_types.extend_from_slice(&[
+            RecordType::A,
+            RecordType::AAAA,
+            RecordType::CAA,
+            RecordType::CNAME,
+            RecordType::DNSKEY,
+            RecordType::DS,
+            RecordType::MX,
+            RecordType::NS,
+            RecordType::PTR,
+            RecordType::SOA,
+            RecordType::SRV,
+            RecordType::SSHFP,
+            RecordType::TLSA,
+            RecordType::TXT,
+            RecordType::RRSIG,
+        ]);
     }
 }
 
@@ -316,6 +351,9 @@ pub enum OptionsResult {
 
     /// One of the arguments was `--version`, to display the version number.
     Version(UseColours),
+
+    /// One of the arguments was `--list`, to display the list of record types.
+    ListTypes,
 }
 
 /// The reason that help is being displayed. If it’s for the `--help` flag,
@@ -346,6 +384,52 @@ impl fmt::Display for OptionsError {
     }
 }
 
+/// A record type, its description, and an example.
+pub struct RecordTypeInfo {
+    /// The record type.
+    pub record_type: RecordType,
+    /// A description of the record type.
+    pub description: &'static str,
+    /// An example of the record type.
+    pub example: &'static str,
+}
+
+/// Returns a list of all known record types.
+pub fn all_record_types() -> Vec<RecordTypeInfo> {
+    vec![
+        RecordTypeInfo { record_type: RecordType::A, description: "IPv4 address", example: "dog example.com A" },
+        RecordTypeInfo { record_type: RecordType::AAAA, description: "IPv6 address", example: "dog example.com AAAA" },
+        RecordTypeInfo { record_type: RecordType::ANAME, description: "Alias name", example: "dog example.com ANAME" },
+        RecordTypeInfo { record_type: RecordType::ANY, description: "All records", example: "dog example.com ANY" },
+        RecordTypeInfo { record_type: RecordType::AXFR, description: "Zone transfer", example: "dog example.com AXFR" },
+        RecordTypeInfo { record_type: RecordType::CAA, description: "Certification Authority Authorization", example: "dog example.com CAA" },
+        RecordTypeInfo { record_type: RecordType::CNAME, description: "Canonical name", example: "dog www.example.com CNAME" },
+        RecordTypeInfo { record_type: RecordType::DNSKEY, description: "DNS Key", example: "dog example.com DNSKEY" },
+        RecordTypeInfo { record_type: RecordType::DS, description: "Delegation Signer", example: "dog example.com DS" },
+        RecordTypeInfo { record_type: RecordType::HINFO, description: "Host Information", example: "dog example.com HINFO" },
+        RecordTypeInfo { record_type: RecordType::HTTPS, description: "HTTPS Binding", example: "dog example.com HTTPS" },
+        RecordTypeInfo { record_type: RecordType::IXFR, description: "Incremental Zone Transfer", example: "dog example.com IXFR" },
+        RecordTypeInfo { record_type: RecordType::MX, description: "Mail exchange", example: "dog example.com MX" },
+        RecordTypeInfo { record_type: RecordType::NAPTR, description: "Naming Authority Pointer", example: "dog example.com NAPTR" },
+        RecordTypeInfo { record_type: RecordType::NS, description: "Name server", example: "dog example.com NS" },
+        RecordTypeInfo { record_type: RecordType::NULL, description: "Null record", example: "dog example.com NULL" },
+        RecordTypeInfo { record_type: RecordType::OPENPGPKEY, description: "OpenPGP Key", example: "dog example.com OPENPGPKEY" },
+        RecordTypeInfo { record_type: RecordType::OPT, description: "Option", example: "dog example.com OPT" },
+        RecordTypeInfo { record_type: RecordType::PTR, description: "Pointer", example: "dog 1.1.1.1 PTR" },
+        RecordTypeInfo { record_type: RecordType::SOA, description: "Start of Authority", example: "dog example.com SOA" },
+        RecordTypeInfo { record_type: RecordType::SRV, description: "Service locator", example: "dog _sip._tcp.example.com SRV" },
+        RecordTypeInfo { record_type: RecordType::SSHFP, description: "SSH Public Key Fingerprint", example: "dog example.com SSHFP" },
+        RecordTypeInfo { record_type: RecordType::SVCB, description: "Service Binding", example: "dog example.com SVCB" },
+        RecordTypeInfo { record_type: RecordType::TLSA, description: "TLSA certificate association", example: "dog _443._tcp.example.com TLSA" },
+        RecordTypeInfo { record_type: RecordType::TXT, description: "Text", example: "dog example.com TXT" },
+        RecordTypeInfo { record_type: RecordType::RRSIG, description: "DNSSEC Signature", example: "dog example.com RRSIG" },
+        RecordTypeInfo { record_type: RecordType::NSEC, description: "Next Secure record", example: "dog example.com NSEC" },
+        RecordTypeInfo { record_type: RecordType::NSEC3, description: "Next Secure record version 3", example: "dog example.com NSEC3" },
+        RecordTypeInfo { record_type: RecordType::NSEC3PARAM, description: "NSEC3 parameters", example: "dog example.com NSEC3PARAM" },
+        RecordTypeInfo { record_type: RecordType::TSIG, description: "Transaction Signature", example: "dog example.com TSIG" },
+    ]
+}
+
 
 #[cfg(test)]
 mod test {
@@ -357,6 +441,7 @@ mod test {
             Inputs {
                 domains:         vec![ /* No domains by default */ ],
                 record_types:    vec![ RecordType::A ],
+                any_query:       false,
             }
         }
     }
@@ -394,6 +479,12 @@ mod test {
     fn version_yes_color() {
         assert_eq!(Options::getopts(&[ "--version", "--color", "always" ]),
                    OptionsResult::Version(UseColours::Always));
+    }
+
+    #[test]
+    fn list_types() {
+        assert_eq!(Options::getopts(&[ "--list" ]),
+                   OptionsResult::ListTypes);
     }
 
     #[test]

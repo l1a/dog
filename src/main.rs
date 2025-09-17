@@ -24,6 +24,7 @@
 use log::*;
 use hickory_resolver::TokioAsyncResolver;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+use hickory_resolver::error::ResolveErrorKind;
 
 mod colours;
 mod hints;
@@ -79,6 +80,14 @@ async fn main() {
                 print!("{}", version_bland());
             }
 
+            exit(exits::SUCCESS);
+        }
+
+        OptionsResult::ListTypes => {
+            println!("{:<12} {:<40} {}", "Type", "Description", "Example");
+            for info in all_record_types() {
+                println!("{:<12} {:<40} {}", info.record_type.to_string(), info.description, info.example);
+            }
             exit(exits::SUCCESS);
         }
 
@@ -157,8 +166,17 @@ async fn run(Options { requests, format, measure_time }: Options) -> i32 {
                     responses.push(response);
                 }
                 Err(e) => {
-                    format.print_error(e);
-                    errored = true;
+                    if requests.inputs.any_query {
+                        if let ResolveErrorKind::NoRecordsFound { .. } = e.kind() {
+                            // Suppress this specific error for ANY queries
+                        } else {
+                            format.print_error(e);
+                            errored = true;
+                        }
+                    } else {
+                        format.print_error(e);
+                        errored = true;
+                    }
                 }
             }
         }

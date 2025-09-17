@@ -56,6 +56,18 @@ It has colourful output, understands normal command-line argument syntax, suppor
     --seconds                Do not format durations, display them as seconds
     --time                   Print how long the response took to arrive
 
+### Meta options
+
+    -?, --help               Print list of command-line options
+    -v, --version            Print version information
+    -l, --list               List known DNS record types
+
+
+---
+
+## Record Types
+
+dog supports the following record types: `A`, `AAAA`, `ANAME`, `ANY`, `AXFR`, `CAA`, `CNAME`, `DNSKEY`, `DS`, `HINFO`, `HTTPS`, `IXFR`, `MX`, `NAPTR`, `NS`, `NULL`, `OPENPGPKEY`, `OPT`, `PTR`, `SOA`, `SRV`, `SSHFP`, `SVCB`, `TLSA`, `TXT`, `RRSIG`, `NSEC`, `NSEC3`, `NSEC3PARAM`, `TSIG`.
 
 ---
 

@@ -1,4 +1,4 @@
-% dog(1) v0.3.0-pre
+% dog(1) v0.4.0-pre
 
 <!-- This is the dog(1) man page, written in Markdown. -->
 <!-- To generate the roff version, run `just man`, -->
@@ -114,6 +114,15 @@ META OPTIONS
 
 `--version`
 : Displays the version of dog being invoked.
+
+`-l`, `--list`
+: List known DNS record types.
+
+
+RECORD TYPES
+============
+
+dog supports the following record types: `A`, `AAAA`, `ANAME`, `ANY`, `AXFR`, `CAA`, `CNAME`, `DNSKEY`, `DS`, `HINFO`, `HTTPS`, `IXFR`, `MX`, `NAPTR`, `NS`, `NULL`, `OPENPGPKEY`, `OPT`, `PTR`, `SOA`, `SRV`, `SSHFP`, `SVCB`, `TLSA`, `TXT`, `RRSIG`, `NSEC`, `NSEC3`, `NSEC3PARAM`, `TSIG`.
 
 
 ENVIRONMENT VARIABLES
