@@ -232,22 +232,25 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
         config
     };
 
-    let resolver = TokioAsyncResolver::tokio(config, ResolverOpts::default());
+    let resolver = TokioAsyncResolver::tokio(config.clone(), ResolverOpts::default());
 
     for domain in &requests.inputs.domains {
         for qtype in requests.inputs.record_types.iter().copied() {
             let query_timer = Instant::now();
             let result = resolver.lookup(domain.to_string().as_str(), qtype).await;
 
+            // When printing verbose output, list all the nameservers that are
+            // being queried, rather than just the first one.
             if verbose {
-                let nameserver = requests.inputs.nameservers.first().map_or("system", |s| s.as_str());
+                let nameservers: Vec<String> = config.name_servers().iter().map(|ns| ns.socket_addr.to_string()).collect();
+                let nameserver_str = nameservers.join(", ");
                 let transport = requests.inputs.transport_type.map_or("UDP", |t| match t {
                     TransportType::UDP => "UDP",
                     TransportType::TCP => "TCP",
                     TransportType::TLS => "TLS",
                     TransportType::HTTPS => "HTTPS",
                 });
-                println!("Query for {} {} on {} ({}) finished in {}ms", domain, qtype, nameserver, transport, query_timer.elapsed().as_millis());
+                println!("Query for {} {} on {} ({}) finished in {}ms", domain, qtype, nameserver_str, transport, query_timer.elapsed().as_millis());
             }
 
             match result {
