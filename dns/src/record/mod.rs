@@ -63,6 +63,33 @@ pub use self::txt::TXT;
 mod uri;
 pub use self::uri::URI;
 
+mod smimea;
+pub use self::smimea::SMIMEA;
+
+mod ds;
+pub use self::ds::DS;
+
+mod rrsig;
+pub use self::rrsig::RRSIG;
+
+mod nsec;
+pub use self::nsec::NSEC;
+
+mod dnskey;
+pub use self::dnskey::DNSKEY;
+
+mod dhcid;
+pub use self::dhcid::DHCID;
+
+mod nsec3;
+pub use self::nsec3::NSEC3;
+
+mod nsec3param;
+pub use self::nsec3param::NSEC3PARAM;
+
+mod ipseckey;
+pub use self::ipseckey::IPSECKEY;
+
 
 mod others;
 pub use self::others::UnknownQtype;
@@ -92,6 +119,15 @@ pub enum Record {
     TLSA(TLSA),
     TXT(TXT),
     URI(URI),
+    SMIMEA(SMIMEA),
+    DS(DS),
+    RRSIG(RRSIG),
+    NSEC(NSEC),
+    DNSKEY(DNSKEY),
+    DHCID(DHCID),
+    NSEC3(NSEC3),
+    NSEC3PARAM(NSEC3PARAM),
+    IPSECKEY(IPSECKEY),
 
     /// A record with a type that we don’t recognise.
     Other {
@@ -129,6 +165,15 @@ pub enum RecordType {
     TLSA,
     TXT,
     URI,
+    SMIMEA,
+    DS,
+    RRSIG,
+    NSEC,
+    DNSKEY,
+    DHCID,
+    NSEC3,
+    NSEC3PARAM,
+    IPSECKEY,
 
     /// A record type we don’t recognise.
     Other(UnknownQtype),
@@ -164,6 +209,15 @@ impl From<u16> for RecordType {
         try_record!(TLSA);
         try_record!(TXT);
         try_record!(URI);
+        try_record!(SMIMEA);
+        try_record!(DS);
+        try_record!(RRSIG);
+        try_record!(NSEC);
+        try_record!(DNSKEY);
+        try_record!(DHCID);
+        try_record!(NSEC3);
+        try_record!(NSEC3PARAM);
+        try_record!(IPSECKEY);
 
         RecordType::Other(UnknownQtype::from(type_number))
     }
@@ -194,6 +248,15 @@ impl RecordType {
             RecordType::TLSA,
             RecordType::TXT,
             RecordType::URI,
+            RecordType::SMIMEA,
+            RecordType::DS,
+            RecordType::RRSIG,
+            RecordType::NSEC,
+            RecordType::DNSKEY,
+            RecordType::DHCID,
+            RecordType::NSEC3,
+            RecordType::NSEC3PARAM,
+            RecordType::IPSECKEY,
         ]
     }
 
@@ -228,6 +291,15 @@ impl RecordType {
         try_record!(TLSA);
         try_record!(TXT);
         try_record!(URI);
+        try_record!(SMIMEA);
+        try_record!(DS);
+        try_record!(RRSIG);
+        try_record!(NSEC);
+        try_record!(DNSKEY);
+        try_record!(DHCID);
+        try_record!(NSEC3);
+        try_record!(NSEC3PARAM);
+        try_record!(IPSECKEY);
 
         UnknownQtype::from_type_name(type_name).map(Self::Other)
     }
@@ -255,6 +327,15 @@ impl RecordType {
             Self::TLSA        => TLSA::RR_TYPE,
             Self::TXT         => TXT::RR_TYPE,
             Self::URI         => URI::RR_TYPE,
+            Self::SMIMEA      => SMIMEA::RR_TYPE,
+            Self::DS          => DS::RR_TYPE,
+            Self::RRSIG       => RRSIG::RR_TYPE,
+            Self::NSEC        => NSEC::RR_TYPE,
+            Self::DNSKEY      => DNSKEY::RR_TYPE,
+            Self::DHCID       => DHCID::RR_TYPE,
+            Self::NSEC3       => NSEC3::RR_TYPE,
+            Self::NSEC3PARAM  => NSEC3PARAM::RR_TYPE,
+            Self::IPSECKEY    => IPSECKEY::RR_TYPE,
             Self::Other(o)    => o.type_number(),
         }
     }

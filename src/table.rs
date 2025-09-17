@@ -133,6 +133,15 @@ impl Table {
             Record::TLSA(_)        => self.colours.tlsa.paint("TLSA"),
             Record::TXT(_)         => self.colours.txt.paint("TXT"),
             Record::URI(_)         => self.colours.uri.paint("URI"),
+            Record::SMIMEA(_)      => self.colours.tlsa.paint("SMIMEA"),
+            Record::DS(_)          => self.colours.unknown.paint("DS"),
+            Record::RRSIG(_)       => self.colours.unknown.paint("RRSIG"),
+            Record::NSEC(_)        => self.colours.unknown.paint("NSEC"),
+            Record::DNSKEY(_)      => self.colours.unknown.paint("DNSKEY"),
+            Record::DHCID(_)       => self.colours.unknown.paint("DHCID"),
+            Record::NSEC3(_)       => self.colours.unknown.paint("NSEC3"),
+            Record::NSEC3PARAM(_)  => self.colours.unknown.paint("NSEC3PARAM"),
+            Record::IPSECKEY(_)    => self.colours.unknown.paint("IPSECKEY"),
 
             Record::Other { ref type_number, .. } => self.colours.unknown.paint(type_number.to_string()),
         }
