@@ -48,6 +48,38 @@ pub enum TransportType {
     HTTPS,
 }
 
+impl TransportType {
+    fn from_args<C>(args: C) -> Result<Option<Self>, OptionsError>
+    where C: IntoIterator,
+          C::Item: AsRef<OsStr>,
+    {
+        let mut transports = Vec::new();
+
+        for arg in args {
+            let arg = arg.as_ref().to_string_lossy();
+            if arg == "--udp" || arg == "-U" {
+                transports.push(Self::UDP);
+            }
+            else if arg == "--tcp" || arg == "-T" {
+                transports.push(Self::TCP);
+            }
+            else if arg == "--tls" || arg == "-S" {
+                transports.push(Self::TLS);
+            }
+            else if arg == "--https" || arg == "-H" {
+                transports.push(Self::HTTPS);
+            }
+        }
+
+        if transports.len() > 1 {
+            Err(OptionsError::MultipleTransports)
+        }
+        else {
+            Ok(transports.pop())
+        }
+    }
+}
+
 impl Options {
 
     /// Parses and interprets a set of options from the user’s command-line
@@ -95,7 +127,7 @@ impl Options {
         opts.optflag ("l", "list",         "List known DNS record types");
         opts.optflag ("v", "verbose",      "Print verbose information");
 
-        let matches = match opts.parse(args) {
+        let matches = match opts.parse(args.into_iter().collect::<Vec<_>>()) {
             Ok(m)  => m,
             Err(e) => return OptionsResult::InvalidOptionsFormat(e),
         };
@@ -112,7 +144,12 @@ impl Options {
             OptionsResult::ListTypes
         }
         else {
-            match Self::deduce(matches) {
+            let transport_type = match TransportType::from_args(matches.free.iter()) {
+                Ok(tt) => tt,
+                Err(e) => return OptionsResult::InvalidOptions(e),
+            };
+
+            match Self::deduce(matches, transport_type) {
                 Ok(opts) => {
                     if opts.requests.inputs.domains.is_empty() {
                         OptionsResult::Help(HelpReason::NoDomains, uc)
@@ -129,11 +166,11 @@ impl Options {
     }
 
     /// Deduce the options from the command-line matches.
-    fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
+    fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
         let measure_time = matches.opt_present("time");
         let verbose = matches.opt_present("verbose");
         let format = OutputFormat::deduce(&matches);
-        let requests = Requests::deduce(matches)?;
+        let requests = Requests::deduce(matches, transport_type)?;
 
         Ok(Self { requests, measure_time, verbose, format })
     }
@@ -142,8 +179,8 @@ impl Options {
 
 impl Requests {
     /// Deduce the requests from the command-line matches.
-    fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
-        let inputs = Inputs::deduce(matches)?;
+    fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
+        let inputs = Inputs::deduce(matches, transport_type)?;
 
         Ok(Self { inputs })
     }
@@ -173,28 +210,13 @@ pub struct Inputs {
 
 impl Inputs {
     /// Deduce the inputs from the command-line matches.
-    fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
+    fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
         let mut inputs = Self::default();
-        inputs.load_transport_types(&matches)?;
+        inputs.transport_type = transport_type;
         inputs.load_named_args(&matches)?;
         inputs.load_free_args(matches)?;
         inputs.load_fallbacks();
         Ok(inputs)
-    }
-
-    /// Load the transport types from the command-line matches.
-    fn load_transport_types(&mut self, matches: &getopts::Matches) -> Result<(), OptionsError> {
-        let mut transports = Vec::new();
-        if matches.opt_present("udp") { transports.push(TransportType::UDP); }
-        if matches.opt_present("tcp") { transports.push(TransportType::TCP); }
-        if matches.opt_present("tls") { transports.push(TransportType::TLS); }
-        if matches.opt_present("https") { transports.push(TransportType::HTTPS); }
-
-        if transports.len() > 1 {
-            return Err(OptionsError::MultipleTransports);
-        }
-        self.transport_type = transports.pop();
-        Ok(())
     }
 
     /// Load the named arguments from the command-line matches.
