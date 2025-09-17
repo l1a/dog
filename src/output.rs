@@ -138,7 +138,9 @@ impl OutputFormat {
 
                 for response in responses {
                     if let Some(rcode) = response.flags.error_code {
-                        print_error_code(rcode);
+                        if !(rcode == ErrorCode::FormatError && !response.answers.is_empty()) {
+                            print_error_code(rcode);
+                        }
                     }
 
                     for a in response.answers {
@@ -155,7 +157,7 @@ impl OutputFormat {
                 }
 
                 table.print(duration);
-            }
+        }
         }
 
         true
@@ -282,6 +284,61 @@ impl TextFormat {
             }
             Record::URI(uri) => {
                 format!("{} {} {}", uri.priority, uri.weight, Ascii(&uri.target))
+            }
+            Record::SMIMEA(smimea) => {
+                format!("{} {} {} {}",
+                    smimea.certificate_usage,
+                    smimea.selector,
+                    smimea.matching_type,
+                    smimea.hex_certificate_data(),
+                )
+            }
+            Record::DS(ds) => {
+                format!("{} {} {} {}", ds.key_tag, ds.algorithm, ds.digest_type, ds.digest.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+            }
+            Record::RRSIG(rrsig) => {
+                format!("{} {} {} {} {} {} {} {:?} {}",
+                    rrsig.type_covered,
+                    rrsig.algorithm,
+                    rrsig.labels,
+                    rrsig.original_ttl,
+                    rrsig.signature_expiration,
+                    rrsig.signature_inception,
+                    rrsig.key_tag,
+                    rrsig.signers_name.to_string(),
+                    rrsig.signature.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+                )
+            }
+            Record::NSEC(nsec) => {
+                format!("{:?} {:?}", nsec.next_domain_name.to_string(), nsec.type_bit_maps.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+            }
+            Record::DNSKEY(dnskey) => {
+                format!("{} {} {} {}", dnskey.flags, dnskey.protocol, dnskey.algorithm, dnskey.public_key.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+            }
+            Record::DHCID(dhcid) => {
+                format!("{} {} {}", dhcid.identifier_type_code, dhcid.digest_type_code, dhcid.digest.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+            }
+            Record::NSEC3(nsec3) => {
+                format!("{} {} {} {} {:?} {:?}",
+                    nsec3.hash_algorithm,
+                    nsec3.flags,
+                    nsec3.iterations,
+                    nsec3.salt.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+                    nsec3.next_hashed_owner_name.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+                    nsec3.type_bit_maps.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+                )
+            }
+            Record::NSEC3PARAM(nsec3param) => {
+                format!("{} {} {} {}", nsec3param.hash_algorithm, nsec3param.flags, nsec3param.iterations, nsec3param.salt.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+            }
+            Record::IPSECKEY(ipseckey) => {
+                format!("{} {} {} {:?} {}",
+                    ipseckey.precedence,
+                    ipseckey.gateway_type,
+                    ipseckey.algorithm,
+                    ipseckey.gateway,
+                    ipseckey.public_key.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+                )
             }
             Record::Other { bytes, .. } => {
                 format!("{:?}", bytes)
@@ -410,9 +467,18 @@ fn json_record_type_name(record: RecordType) -> JsonValue {
         RecordType::SOA         => "SOA".into(),
         RecordType::SRV         => "SRV".into(),
         RecordType::SSHFP       => "SSHFP".into(),
-        RecordType::TLSA        => "TLSA".into(),
         RecordType::TXT         => "TXT".into(),
+        RecordType::TLSA        => "TLSA".into(),
         RecordType::URI         => "URI".into(),
+        RecordType::SMIMEA      => "SMIMEA".into(),
+        RecordType::DS          => "DS".into(),
+        RecordType::RRSIG       => "RRSIG".into(),
+        RecordType::NSEC        => "NSEC".into(),
+        RecordType::DNSKEY      => "DNSKEY".into(),
+        RecordType::DHCID       => "DHCID".into(),
+        RecordType::NSEC3       => "NSEC3".into(),
+        RecordType::NSEC3PARAM  => "NSEC3PARAM".into(),
+        RecordType::IPSECKEY    => "IPSECKEY".into(),
         RecordType::Other(unknown) => {
             match unknown {
                 UnknownQtype::HeardOf(name, _)  => (*name).into(),
@@ -444,6 +510,15 @@ fn json_record_name(record: &Record) -> JsonValue {
         Record::TLSA(_)        => "TLSA".into(),
         Record::TXT(_)         => "TXT".into(),
         Record::URI(_)         => "URI".into(),
+        Record::SMIMEA(_)      => "SMIMEA".into(),
+        Record::DS(_)          => "DS".into(),
+        Record::RRSIG(_)       => "RRSIG".into(),
+        Record::NSEC(_)        => "NSEC".into(),
+        Record::DNSKEY(_)      => "DNSKEY".into(),
+        Record::DHCID(_)       => "DHCID".into(),
+        Record::NSEC3(_)       => "NSEC3".into(),
+        Record::NSEC3PARAM(_)  => "NSEC3PARAM".into(),
+        Record::IPSECKEY(_)    => "IPSECKEY".into(),
         Record::Other { type_number, .. } => {
             match type_number {
                 UnknownQtype::HeardOf(name, _)  => (*name).into(),
@@ -583,6 +658,83 @@ fn json_record_data(record: Record) -> JsonValue {
                 "priority": uri.priority,
                 "weight": uri.weight,
                 "target": String::from_utf8_lossy(&uri.target).to_string(),
+            }
+        }
+        Record::SMIMEA(smimea) => {
+            object! {
+                "certificate_usage": smimea.certificate_usage,
+                "selector": smimea.selector,
+                "matching_type": smimea.matching_type,
+                "certificate_data": smimea.certificate_data,
+            }
+        }
+        Record::DS(ds) => {
+            object! {
+                "key_tag": ds.key_tag,
+                "algorithm": ds.algorithm,
+                "digest_type": ds.digest_type,
+                "digest": ds.digest,
+            }
+        }
+        Record::RRSIG(rrsig) => {
+            object! {
+                "type_covered": rrsig.type_covered,
+                "algorithm": rrsig.algorithm,
+                "labels": rrsig.labels,
+                "original_ttl": rrsig.original_ttl,
+                "signature_expiration": rrsig.signature_expiration,
+                "signature_inception": rrsig.signature_inception,
+                "key_tag": rrsig.key_tag,
+                "signers_name": rrsig.signers_name.to_string(),
+                "signature": rrsig.signature,
+            }
+        }
+        Record::NSEC(nsec) => {
+            object! {
+                "next_domain_name": nsec.next_domain_name.to_string(),
+                "type_bit_maps": nsec.type_bit_maps,
+            }
+        }
+        Record::DNSKEY(dnskey) => {
+            object! {
+                "flags": dnskey.flags,
+                "protocol": dnskey.protocol,
+                "algorithm": dnskey.algorithm,
+                "public_key": dnskey.public_key,
+            }
+        }
+        Record::DHCID(dhcid) => {
+            object! {
+                "identifier_type_code": dhcid.identifier_type_code,
+                "digest_type_code": dhcid.digest_type_code,
+                "digest": dhcid.digest,
+            }
+        }
+        Record::NSEC3(nsec3) => {
+            object! {
+                "hash_algorithm": nsec3.hash_algorithm,
+                "flags": nsec3.flags,
+                "iterations": nsec3.iterations,
+                "salt": nsec3.salt,
+                "next_hashed_owner_name": nsec3.next_hashed_owner_name,
+                "type_bit_maps": nsec3.type_bit_maps,
+            }
+        }
+        Record::NSEC3PARAM(nsec3param) => {
+            object! {
+                "hash_algorithm": nsec3param.hash_algorithm,
+                "flags": nsec3param.flags,
+                "iterations": nsec3param.iterations,
+                "salt": nsec3param.salt,
+            }
+        }
+        Record::IPSECKEY(ipseckey) => {
+            object! {
+                "precedence": ipseckey.precedence,
+                "gateway_type": ipseckey.gateway_type,
+                "algorithm": ipseckey.algorithm,
+                "gateway": ipseckey.gateway,
+                "public_key": ipseckey.public_key,
             }
         }
         Record::Other { bytes, .. } => {

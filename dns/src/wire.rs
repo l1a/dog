@@ -200,6 +200,15 @@ impl Record {
             RecordType::TLSA        => read_record!(TLSA),
             RecordType::TXT         => read_record!(TXT),
             RecordType::URI         => read_record!(URI),
+            RecordType::SMIMEA      => read_record!(SMIMEA),
+            RecordType::DS          => read_record!(DS),
+            RecordType::RRSIG       => read_record!(RRSIG),
+            RecordType::NSEC        => read_record!(NSEC),
+            RecordType::DNSKEY      => read_record!(DNSKEY),
+            RecordType::DHCID       => read_record!(DHCID),
+            RecordType::NSEC3       => read_record!(NSEC3),
+            RecordType::NSEC3PARAM  => read_record!(NSEC3PARAM),
+            RecordType::IPSECKEY    => read_record!(IPSECKEY),
 
             RecordType::Other(type_number) => {
                 let mut bytes = Vec::new();
