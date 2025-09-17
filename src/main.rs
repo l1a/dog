@@ -94,24 +94,36 @@ async fn main() {
     }
 }
 
+/// Returns the pretty-printed usage string.
 fn usage_pretty() -> &'static str {
     include_str!(concat!(env!("OUT_DIR"), "/usage.pretty.txt"))
 }
 
+/// Returns the bland usage string.
 fn usage_bland() -> &'static str {
     include_str!(concat!(env!("OUT_DIR"), "/usage.bland.txt"))
 }
 
+/// Returns the pretty-printed version string.
 fn version_pretty() -> &'static str {
     include_str!(concat!(env!("OUT_DIR"), "/version.pretty.txt"))
 }
 
+/// Returns the bland version string.
 fn version_bland() -> &'static str {
     include_str!(concat!(env!("OUT_DIR"), "/version.bland.txt"))
 }
 
 
 /// Runs dog with some options, returning the status to exit with.
+///
+/// # Arguments
+///
+/// * `options` - The command-line options.
+///
+/// # Returns
+///
+/// * The process exit code.
 async fn run(Options { requests, format, measure_time }: Options) -> i32 {
     use std::time::Instant;
 

@@ -7,20 +7,33 @@ use ansi_term::Color::*;
 /// The **colours** are used to paint the input.
 #[derive(Debug, Default)]
 pub struct Colours {
+    /// The style for the question name.
     pub qname: Style,
 
+    /// The style for the answer section.
     pub answer: Style,
 
+    /// The style for A records.
     pub a: Style,
+    /// The style for AAAA records.
     pub aaaa: Style,
+    /// The style for CAA records.
     pub caa: Style,
+    /// The style for CNAME records.
     pub cname: Style,
+    /// The style for MX records.
     pub mx: Style,
+    /// The style for NS records.
     pub ns: Style,
+    /// The style for PTR records.
     pub ptr: Style,
+    /// The style for SOA records.
     pub soa: Style,
+    /// The style for SRV records.
     pub srv: Style,
+    /// The style for TXT records.
     pub txt: Style,
+    /// The style for unknown record types.
     pub default: Style,
 }
 

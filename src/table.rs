@@ -79,8 +79,7 @@ impl Table {
                     output.push_str(&" ".repeat(ttl_len));
                 }
 
-                output.push_str(&format!(" {} {}
-", self.format_section(r.section), r.summary));
+                output.push_str(&format!(" {} \n", self.format_section(r.section), r.summary));
             }
         }
         output
@@ -95,6 +94,7 @@ impl Table {
         }
     }
 
+    /// Returns a coloured string for a record type.
     fn coloured_record_type(&self, record: &Record) -> ANSIString<'static> {
         match record.record_type() {
             RecordType::A     => self.colours.a.paint("A"),
@@ -111,18 +111,22 @@ impl Table {
         }
     }
 
+    /// Returns the maximum length of a qtype string.
     fn max_qtype_len(&self) -> usize {
         self.rows.iter().map(|r| r.qtype.len()).max().unwrap_or(0)
     }
 
+    /// Returns the maximum length of a qname string.
     fn max_qname_len(&self) -> usize {
         self.rows.iter().map(|r| r.qname.len()).max().unwrap_or(0)
     }
 
+    /// Returns the maximum length of a TTL string.
     fn max_ttl_len(&self) -> usize {
         self.rows.iter().map(|r| r.ttl.as_ref().map_or(0, String::len)).max().unwrap_or(0)
     }
 
+    /// Returns a coloured string for a section.
     fn format_section(&self, section: Section) -> ANSIString<'static> {
         match section {
             Section::Answer      => self.colours.answer.paint(" "),

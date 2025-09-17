@@ -7,6 +7,10 @@ use ansi_term::{Colour, ANSIString};
 
 /// Sets the internal logger, changing the log level based on the value of an
 /// environment variable.
+///
+/// # Arguments
+///
+/// * `ev` - The value of the `DOG_DEBUG` environment variable.
 pub fn configure<T: AsRef<OsStr>>(ev: Option<T>) {
     let ev = match ev {
         Some(v)  => v,
@@ -32,6 +36,7 @@ pub fn configure<T: AsRef<OsStr>>(ev: Option<T>) {
 }
 
 
+/// The global logger instance.
 #[derive(Debug)]
 struct Logger;
 

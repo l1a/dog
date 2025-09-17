@@ -25,8 +25,10 @@ pub struct Options {
     pub format: OutputFormat,
 }
 
+/// The set of requests to make.
 #[derive(PartialEq, Debug, Default)]
 pub struct Requests {
+    /// The inputs to generate requests from.
     pub inputs: Inputs,
 }
 
@@ -105,6 +107,7 @@ impl Options {
         }
     }
 
+    /// Deduce the options from the command-line matches.
     fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
         let measure_time = matches.opt_present("time");
         let format = OutputFormat::deduce(&matches);
@@ -116,6 +119,7 @@ impl Options {
 
 
 impl Requests {
+    /// Deduce the requests from the command-line matches.
     fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
         let inputs = Inputs::deduce(matches)?;
 
@@ -137,6 +141,7 @@ pub struct Inputs {
 
 
 impl Inputs {
+    /// Deduce the inputs from the command-line matches.
     fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
         let mut inputs = Self::default();
         inputs.load_named_args(&matches)?;
@@ -145,6 +150,7 @@ impl Inputs {
         Ok(inputs)
     }
 
+    /// Load the named arguments from the command-line matches.
     fn load_named_args(&mut self, matches: &getopts::Matches) -> Result<(), OptionsError> {
         for domain in matches.opt_strs("query") {
             self.add_domain(&domain);
@@ -162,6 +168,7 @@ impl Inputs {
         Ok(())
     }
 
+    /// Load the free arguments from the command-line matches.
     fn load_free_args(&mut self, matches: getopts::Matches) -> Result<(), OptionsError> {
         for argument in matches.free {
             if let Some(nameserver) = argument.strip_prefix('@') {
@@ -194,21 +201,25 @@ impl Inputs {
         Ok(())
     }
 
+    /// Load the fallback values for the inputs.
     fn load_fallbacks(&mut self) {
         if self.record_types.is_empty() {
             self.record_types.push(RecordType::A);
         }
     }
 
+    /// Add a domain to the list of domains to query.
     fn add_domain(&mut self, input: &str) {
         self.domains.push(input.to_string());
     }
 
+    /// Add a record type to the list of record types to query.
     fn add_type(&mut self, rt: RecordType) {
         self.record_types.push(rt);
     }
 }
 
+/// Returns `true` if the argument is a constant-like name.
 fn is_constant_name(argument: &str) -> bool {
     let first_char = match argument.chars().next() {
         Some(c)  => c,
@@ -222,6 +233,7 @@ fn is_constant_name(argument: &str) -> bool {
     argument.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+/// Returns the reverse lookup domain for an IP address.
 fn reverse_lookup_domain(ip: IpAddr) -> String {
     match ip {
         IpAddr::V4(v4) => {
@@ -243,6 +255,7 @@ fn reverse_lookup_domain(ip: IpAddr) -> String {
 
 
 impl OutputFormat {
+    /// Deduce the output format from the command-line matches.
     fn deduce(matches: &getopts::Matches) -> Self {
         if matches.opt_present("short") {
             let summary_format = TextFormat::deduce(matches);
@@ -261,6 +274,7 @@ impl OutputFormat {
 
 
 impl UseColours {
+    /// Deduce the colour usage from the command-line matches.
     fn deduce(matches: &getopts::Matches) -> Self {
         match matches.opt_str("color").or_else(|| matches.opt_str("colour")).unwrap_or_default().as_str() {
             "automatic" | "auto" | ""  => Self::Automatic,
@@ -276,6 +290,7 @@ impl UseColours {
 
 
 impl TextFormat {
+    /// Deduce the text format from the command-line matches.
     fn deduce(matches: &getopts::Matches) -> Self {
         let format_durations = ! matches.opt_present("seconds");
         Self { format_durations }
@@ -319,6 +334,7 @@ pub enum HelpReason {
 /// Something wrong with the combination of options the user has picked.
 #[derive(PartialEq, Debug)]
 pub enum OptionsError {
+    /// The query type is invalid.
     InvalidQueryType(String),
 }
 
