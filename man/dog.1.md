@@ -1,4 +1,4 @@
-% dog(1) v0.3.0
+% dog(1) v0.3.0-pre
 
 <!-- This is the dog(1) man page, written in Markdown. -->
 <!-- To generate the roff version, run `just man`, -->
@@ -150,17 +150,26 @@ dog understands and can interpret the following record types:
 `AAAA`
 : IPv6 addresses
 
-`ANY`
-: all available records for a name
-
 `CAA`
 : permitted certificate authorities
 
 `CNAME`
 : canonical domain aliases
 
+`DHCID`
+: DHCP identifiers for DNS updates
+
+`DNSKEY`
+: DNS public keys for DNSSEC
+
+`DS`
+: delegation signer records for DNSSEC
+
 `HINFO`
 : system information and, sometimes, forbidden request explanations
+
+`IPSECKEY`
+: IPsec keys
 
 `LOC`
 : location information
@@ -174,11 +183,26 @@ dog understands and can interpret the following record types:
 `NS`
 : domain name servers
 
+`NSEC`
+: next secure records for DNSSEC
+
+`NSEC3`
+: next secure v3 records for DNSSEC
+
+`NSEC3PARAM`
+: NSEC3 parameters
+
 `OPT`
 : extensions to the DNS protocol
 
 `PTR`
 : pointers to canonical names, usually for reverse lookups
+
+`RRSIG`
+: DNSSEC signatures
+
+`SMIMEA`
+: S/MIME certificate associations
 
 `SOA`
 : administrative information about zones

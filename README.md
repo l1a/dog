@@ -20,6 +20,7 @@ Dogs _can_ look up!
 
 **dog** is a command-line DNS client, like `dig`.
 It has colourful output, understands normal command-line argument syntax, supports the DNS-over-TLS and DNS-over-HTTPS protocols, and can emit JSON.
+It also has comprehensive support for DNSSEC record types including DS, RRSIG, NSEC, DNSKEY, NSEC3, and more.
 
 ## Examples
 
@@ -27,6 +28,9 @@ It has colourful output, understands normal command-line argument syntax, suppor
     dog example.net MX                       ...looking up MX records instead
     dog example.net MX @1.1.1.1              ...using a specific nameserver instead
     dog example.net MX @1.1.1.1 -T           ...using TCP rather than UDP
+    dog example.net DS                       ...querying DNSSEC delegation signer records
+    dog example.net DNSKEY                   ...looking up DNSSEC public keys
+    dog example.net RRSIG                    ...checking DNSSEC signatures
     dog -q example.net -t MX -n 1.1.1.1 -T   As above, but using explicit arguments
 
 ---
