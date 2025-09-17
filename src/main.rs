@@ -255,7 +255,12 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
 
             match result {
                 Ok(response) => {
-                    responses.push(response);
+                    if verbose {
+                        format.print(vec![response], None);
+                    }
+                    else {
+                        responses.push(response);
+                    }
                 }
                 Err(e) => {
                     if requests.inputs.any_query {
@@ -275,17 +280,32 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
     }
 
 
-    let duration = timer.map(|t| t.elapsed());
-    if format.print(responses, duration) {
+    if !verbose {
+        let duration = timer.map(|t| t.elapsed());
+        if format.print(responses, duration) {
+            if errored {
+                exits::NETWORK_ERROR
+            }
+            else {
+                exits::SUCCESS
+            }
+        }
+        else {
+            exits::NO_SHORT_RESULTS
+        }
+    }
+    else {
+        let duration = timer.map(|t| t.elapsed());
+        if let Some(duration) = duration {
+            println!("Ran in {}ms", duration.as_millis());
+        }
+
         if errored {
             exits::NETWORK_ERROR
         }
         else {
             exits::SUCCESS
         }
-    }
-    else {
-        exits::NO_SHORT_RESULTS
     }
 }
 
