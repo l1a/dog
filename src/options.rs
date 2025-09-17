@@ -314,7 +314,6 @@ impl Inputs {
             RecordType::DS,
             RecordType::MX,
             RecordType::NS,
-            RecordType::PTR,
             RecordType::SOA,
             RecordType::SRV,
             RecordType::SSHFP,
