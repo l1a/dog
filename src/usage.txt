@@ -23,6 +23,6 @@ Output options:
   --time                   Print how long the response took to arrive
 
 Meta options:
-  -v, --version            Print version information
+  -V, --version            Print version information
   -?, --help               Print list of command-line options
   -l, --list               List known DNS record types

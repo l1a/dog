@@ -59,7 +59,7 @@ It has colourful output, understands normal command-line argument syntax, suppor
 ### Meta options
 
     -?, --help               Print list of command-line options
-    -v, --version            Print version information
+    -V, --version            Print version information
     -l, --list               List known DNS record types
 
 

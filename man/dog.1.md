@@ -112,7 +112,7 @@ META OPTIONS
 `--help`
 : Displays an overview of the command-line options.
 
-`--version`
+`-V`, `--version`
 : Displays the version of dog being invoked.
 
 `-l`, `--list`

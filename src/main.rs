@@ -23,7 +23,7 @@
 
 use log::*;
 use hickory_resolver::TokioAsyncResolver;
-use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+use hickory_resolver::config::{ResolverConfig, ResolverOpts, NameServerConfig, Protocol};
 use hickory_resolver::error::ResolveErrorKind;
 
 mod colours;
@@ -133,11 +133,12 @@ fn version_bland() -> &'static str {
 /// # Returns
 ///
 /// * The process exit code.
-async fn run(Options { requests, format, measure_time }: Options) -> i32 {
+async fn run(Options { requests, format, measure_time, verbose }: Options) -> i32 {
     use std::time::Instant;
+    use std::net::{IpAddr, SocketAddr};
 
     let mut responses = Vec::new();
-    let timer = if measure_time { Some(Instant::now()) } else { None };
+    let timer = if measure_time || verbose { Some(Instant::now()) } else { None };
 
     let mut errored = false;
 
@@ -155,11 +156,99 @@ async fn run(Options { requests, format, measure_time }: Options) -> i32 {
         }
     }
 
-    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+    let config = if requests.inputs.nameservers.is_empty() {
+        ResolverConfig::default()
+    } else {
+        let mut config = ResolverConfig::new();
+        for ns_str in &requests.inputs.nameservers {
+            if let Some(transport) = requests.inputs.transport_type {
+                match (ns_str.as_str(), transport) {
+                    ("google", TransportType::HTTPS) => {
+                        config = ResolverConfig::google_https();
+                        continue;
+                    }
+                    ("cloudflare", TransportType::HTTPS) => {
+                        config = ResolverConfig::cloudflare_https();
+                        continue;
+                    }
+                    ("cloudflare" | "one.one.one.one", TransportType::TLS) => {
+                        config = ResolverConfig::cloudflare_tls();
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+
+            let protocol = match requests.inputs.transport_type {
+                Some(TransportType::UDP) => Protocol::Udp,
+                Some(TransportType::TCP) => Protocol::Tcp,
+                Some(TransportType::TLS) => Protocol::Tls,
+                Some(TransportType::HTTPS) => Protocol::Https,
+                None => Protocol::Udp,
+            };
+
+            let port = match protocol {
+                Protocol::Tls => 853,
+                Protocol::Https => 443,
+                _ => 53,
+            };
+
+            let mut tls_dns_name: Option<String> = None;
+
+            let ip_addr: IpAddr = if let Ok(ip) = ns_str.parse::<IpAddr>() {
+                if protocol == Protocol::Tls || protocol == Protocol::Https {
+                    tls_dns_name = Some(ns_str.clone());
+                }
+                ip
+            } else {
+                if protocol == Protocol::Tls || protocol == Protocol::Https {
+                    tls_dns_name = Some(ns_str.clone());
+                }
+
+                let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+                match resolver.lookup_ip(ns_str.as_str()).await {
+                    Ok(lookup) => {
+                        if let Some(ip) = lookup.iter().next() {
+                            ip
+                        } else {
+                            eprintln!("Failed to resolve nameserver '{}': No IP addresses found", ns_str);
+                            return exits::OPTIONS_ERROR;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to resolve nameserver '{}': {}", ns_str, e);
+                        return exits::OPTIONS_ERROR;
+                    }
+                }
+            };
+
+            let socket_addr = SocketAddr::new(ip_addr, port);
+            let mut ns_config = NameServerConfig::new(socket_addr, protocol);
+            if let Some(name) = tls_dns_name {
+                ns_config.tls_dns_name = Some(name);
+            }
+            config.add_name_server(ns_config);
+        }
+        config
+    };
+
+    let resolver = TokioAsyncResolver::tokio(config, ResolverOpts::default());
 
     for domain in &requests.inputs.domains {
         for qtype in requests.inputs.record_types.iter().copied() {
+            let query_timer = Instant::now();
             let result = resolver.lookup(domain.to_string().as_str(), qtype).await;
+
+            if verbose {
+                let nameserver = requests.inputs.nameservers.first().map_or("system", |s| s.as_str());
+                let transport = requests.inputs.transport_type.map_or("UDP", |t| match t {
+                    TransportType::UDP => "UDP",
+                    TransportType::TCP => "TCP",
+                    TransportType::TLS => "TLS",
+                    TransportType::HTTPS => "HTTPS",
+                });
+                println!("Query for {} {} on {} ({}) finished in {}ms", domain, qtype, nameserver, transport, query_timer.elapsed().as_millis());
+            }
 
             match result {
                 Ok(response) => {

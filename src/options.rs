@@ -21,6 +21,9 @@ pub struct Options {
     /// Whether to display the time taken after every query.
     pub measure_time: bool,
 
+    /// Whether to display verbose information.
+    pub verbose: bool,
+
     /// How to format the output data.
     pub format: OutputFormat,
 }
@@ -30,6 +33,19 @@ pub struct Options {
 pub struct Requests {
     /// The inputs to generate requests from.
     pub inputs: Inputs,
+}
+
+/// The transport protocol to use for DNS queries.
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub enum TransportType {
+    /// UDP transport.
+    UDP,
+    /// TCP transport.
+    TCP,
+    /// TLS transport.
+    TLS,
+    /// HTTPS transport.
+    HTTPS,
 }
 
 impl Options {
@@ -74,9 +90,10 @@ impl Options {
         opts.optflag ("",  "time",         "Print how long the response took to arrive");
 
         // Meta options
-        opts.optflag ("v", "version",      "Print version information");
+        opts.optflag ("V", "version",      "Print version information");
         opts.optflag ("?", "help",         "Print list of command-line options");
         opts.optflag ("l", "list",         "List known DNS record types");
+        opts.optflag ("v", "verbose",      "Print verbose information");
 
         let matches = match opts.parse(args) {
             Ok(m)  => m,
@@ -114,10 +131,11 @@ impl Options {
     /// Deduce the options from the command-line matches.
     fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
         let measure_time = matches.opt_present("time");
+        let verbose = matches.opt_present("verbose");
         let format = OutputFormat::deduce(&matches);
         let requests = Requests::deduce(matches)?;
 
-        Ok(Self { requests, measure_time, format })
+        Ok(Self { requests, measure_time, verbose, format })
     }
 }
 
@@ -144,6 +162,12 @@ pub struct Inputs {
 
     /// Whether the user requested an "ANY" query.
     pub any_query: bool,
+
+    /// The transport protocol to use.
+    pub transport_type: Option<TransportType>,
+
+    /// The nameservers to use.
+    pub nameservers: Vec<String>,
 }
 
 
@@ -151,10 +175,26 @@ impl Inputs {
     /// Deduce the inputs from the command-line matches.
     fn deduce(matches: getopts::Matches) -> Result<Self, OptionsError> {
         let mut inputs = Self::default();
+        inputs.load_transport_types(&matches)?;
         inputs.load_named_args(&matches)?;
         inputs.load_free_args(matches)?;
         inputs.load_fallbacks();
         Ok(inputs)
+    }
+
+    /// Load the transport types from the command-line matches.
+    fn load_transport_types(&mut self, matches: &getopts::Matches) -> Result<(), OptionsError> {
+        let mut transports = Vec::new();
+        if matches.opt_present("udp") { transports.push(TransportType::UDP); }
+        if matches.opt_present("tcp") { transports.push(TransportType::TCP); }
+        if matches.opt_present("tls") { transports.push(TransportType::TLS); }
+        if matches.opt_present("https") { transports.push(TransportType::HTTPS); }
+
+        if transports.len() > 1 {
+            return Err(OptionsError::MultipleTransports);
+        }
+        self.transport_type = transports.pop();
+        Ok(())
     }
 
     /// Load the named arguments from the command-line matches.
@@ -175,6 +215,10 @@ impl Inputs {
             }
         }
 
+        for ns in matches.opt_strs("nameserver") {
+            self.add_nameserver(&ns);
+        }
+
         Ok(())
     }
 
@@ -182,7 +226,7 @@ impl Inputs {
     fn load_free_args(&mut self, matches: getopts::Matches) -> Result<(), OptionsError> {
         for argument in matches.free {
             if let Some(nameserver) = argument.strip_prefix('@') {
-                trace!("Got nameserver -> {:?}", nameserver);
+                self.add_nameserver(nameserver);
             }
             else if is_constant_name(&argument) {
                 if argument.eq_ignore_ascii_case("ANY") {
@@ -229,6 +273,11 @@ impl Inputs {
     /// Add a record type to the list of record types to query.
     fn add_type(&mut self, rt: RecordType) {
         self.record_types.push(rt);
+    }
+
+    /// Add a nameserver to the list of nameservers to use.
+    fn add_nameserver(&mut self, input: &str) {
+        self.nameservers.push(input.to_string());
     }
 
     /// Add a list of common record types to the list of record types to query.
@@ -374,12 +423,15 @@ pub enum HelpReason {
 pub enum OptionsError {
     /// The query type is invalid.
     InvalidQueryType(String),
+    /// Multiple transport types were specified.
+    MultipleTransports,
 }
 
 impl fmt::Display for OptionsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidQueryType(qt)   => write!(f, "Invalid query type {:?}", qt),
+            Self::MultipleTransports     => write!(f, "Only one transport type can be specified"),
         }
     }
 }
@@ -442,6 +494,8 @@ mod test {
                 domains:         vec![ /* No domains by default */ ],
                 record_types:    vec![ RecordType::A ],
                 any_query:       false,
+                transport_type:  None,
+                nameservers:     vec![],
             }
         }
     }
@@ -562,6 +616,7 @@ mod test {
         assert_eq!(options.requests.inputs, Inputs {
             domains:        vec![ "lookup.dog".to_string() ],
             record_types:   vec![ RecordType::NS ],
+            nameservers:    vec![ "1.1.1.1".to_string() ],
             .. Inputs::fallbacks()
         });
     }
@@ -572,6 +627,7 @@ mod test {
         assert_eq!(options.requests.inputs, Inputs {
             domains:        vec![ "lookup.dog".to_string() ],
             record_types:   vec![ RecordType::SOA ],
+            nameservers:    vec![ "1.1.1.1".to_string() ],
             .. Inputs::fallbacks()
         });
     }
@@ -582,6 +638,7 @@ mod test {
         assert_eq!(options.requests.inputs, Inputs {
             domains:        vec![ "lookup.dog".to_string() ],
             record_types:   vec![ RecordType::SOA ],
+            nameservers:    vec![ "1.1.1.1".to_string() ],
             .. Inputs::fallbacks()
         });
     }
@@ -602,6 +659,7 @@ mod test {
         assert_eq!(options.requests.inputs, Inputs {
             domains:        vec![ "lookup.dog".to_string() ],
             record_types:   vec![ RecordType::SOA ],
+            nameservers:    vec![ "1.1.1.1".to_string() ],
             .. Inputs::fallbacks()
         });
     }
