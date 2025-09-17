@@ -10,30 +10,18 @@ pub struct Colours {
     pub qname: Style,
 
     pub answer: Style,
-    pub authority: Style,
-    pub additional: Style,
 
     pub a: Style,
     pub aaaa: Style,
     pub caa: Style,
     pub cname: Style,
-    pub eui48: Style,
-    pub eui64: Style,
-    pub hinfo: Style,
-    pub loc: Style,
     pub mx: Style,
     pub ns: Style,
-
-    pub openpgpkey: Style,
-    pub opt: Style,
     pub ptr: Style,
-    pub sshfp: Style,
     pub soa: Style,
     pub srv: Style,
-    pub tlsa: Style,
     pub txt: Style,
-    pub uri: Style,
-    pub unknown: Style,
+    pub default: Style,
 }
 
 impl Colours {
@@ -43,32 +31,18 @@ impl Colours {
     pub fn pretty() -> Self {
         Self {
             qname: Blue.bold(),
-
             answer: Style::default(),
-            authority: Cyan.normal(),
-            additional: Green.normal(),
-
             a: Green.bold(),
             aaaa: Green.bold(),
             caa: Red.normal(),
             cname: Yellow.normal(),
-            eui48: Yellow.normal(),
-            eui64: Yellow.bold(),
-            hinfo: Yellow.normal(),
-            loc: Yellow.normal(),
             mx: Cyan.normal(),
-
             ns: Red.normal(),
-            openpgpkey: Cyan.normal(),
-            opt: Purple.normal(),
             ptr: Red.normal(),
-            sshfp: Cyan.normal(),
             soa: Purple.normal(),
             srv: Cyan.normal(),
-            tlsa: Yellow.normal(),
             txt: Yellow.normal(),
-            uri: Yellow.normal(),
-            unknown: White.on(Red),
+            default: White.on(Red),
         }
     }
 

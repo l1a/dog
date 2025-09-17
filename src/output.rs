@@ -1,13 +1,11 @@
 //! Text and JSON output.
 
-use std::fmt;
 use std::time::Duration;
 use std::env;
 
-use dns::{Response, Query, Answer, QClass, ErrorCode, WireError, MandatedLength};
-use dns::record::{Record, RecordType, UnknownQtype, OPT};
-use dns_transport::Error as TransportError;
-use json::{object, JsonValue};
+use hickory_resolver::lookup::Lookup;
+use hickory_resolver::error::ResolveError;
+use json::object;
 
 use crate::colours::Colours;
 use crate::table::{Table, Section};
@@ -78,10 +76,10 @@ impl OutputFormat {
     /// settings. If the duration has been measured, it should also be
     /// printed. Returns `false` if there were no results to print, and `true`
     /// otherwise.
-    pub fn print(self, responses: Vec<Response>, duration: Option<Duration>) -> bool {
+    pub fn print(self, responses: Vec<Lookup>, duration: Option<Duration>) -> bool {
         match self {
             Self::Short(tf) => {
-                let all_answers = responses.into_iter().flat_map(|r| r.answers).collect::<Vec<_>>();
+                let all_answers = responses.into_iter().flat_map(|r| r.into_iter()).collect::<Vec<_>>();
 
                 if all_answers.is_empty() {
                     eprintln!("No results");
@@ -89,15 +87,7 @@ impl OutputFormat {
                 }
 
                 for answer in all_answers {
-                    match answer {
-                        Answer::Standard { record, .. } => {
-                            println!("{}", tf.record_payload_summary(record))
-                        }
-                        Answer::Pseudo { opt, .. } => {
-                            println!("{}", tf.pseudo_record_payload_summary(opt))
-                        }
-                    }
-
+                    println!("{}", tf.record_payload_summary(&answer));
                 }
             }
             Self::JSON => {
@@ -105,10 +95,7 @@ impl OutputFormat {
 
                 for response in responses {
                     let json = object! {
-                        "queries": json_queries(response.queries),
-                        "answers": json_answers(response.answers),
-                        "authorities": json_answers(response.authorities),
-                        "additionals": json_answers(response.additionals),
+                        "answers": response.record_iter().map(|r| r.to_string()).collect::<Vec<_>>(),
                     };
 
                     rs.push(json);
@@ -137,22 +124,8 @@ impl OutputFormat {
                 let mut table = Table::new(uc.palette(), tf);
 
                 for response in responses {
-                    if let Some(rcode) = response.flags.error_code {
-                        if !(rcode == ErrorCode::FormatError && !response.answers.is_empty()) {
-                            print_error_code(rcode);
-                        }
-                    }
-
-                    for a in response.answers {
-                        table.add_row(a, Section::Answer);
-                    }
-
-                    for a in response.authorities {
-                        table.add_row(a, Section::Authority);
-                    }
-
-                    for a in response.additionals {
-                        table.add_row(a, Section::Additional);
+                    for a in response.record_iter() {
+                        table.add_row(a.clone(), Section::Answer);
                     }
                 }
 
@@ -165,17 +138,16 @@ impl OutputFormat {
 
     /// Print an error that’s ocurred while sending or receiving DNS packets
     /// to standard error.
-    pub fn print_error(self, error: TransportError) {
+    pub fn print_error(self, error: ResolveError) {
         match self {
             Self::Short(..) | Self::Text(..) => {
-                eprintln!("Error [{}]: {}", erroneous_phase(&error), error_message(error));
+                eprintln!("Error: {}", error);
             }
 
             Self::JSON => {
                 let object = object! {
                     "error": true,
-                    "error_phase": erroneous_phase(&error),
-                    "error_message": error_message(error),
+                    "error_message": error.to_string(),
                 };
 
                 eprintln!("{}", object);
@@ -189,172 +161,8 @@ impl TextFormat {
     /// Formats a summary of a record in a received DNS response. Each record
     /// type contains wildly different data, so the format of the summary
     /// depends on what record it’s for.
-    pub fn record_payload_summary(self, record: Record) -> String {
-        match record {
-            Record::A(a) => {
-                format!("{}", a.address)
-            }
-            Record::AAAA(aaaa) => {
-                format!("{}", aaaa.address)
-            }
-            Record::CAA(caa) => {
-                if caa.critical {
-                    format!("{} {} (critical)", Ascii(&caa.tag), Ascii(&caa.value))
-                }
-                else {
-                    format!("{} {} (non-critical)", Ascii(&caa.tag), Ascii(&caa.value))
-                }
-            }
-            Record::CNAME(cname) => {
-                format!("{:?}", cname.domain.to_string())
-            }
-            Record::EUI48(eui48) => {
-                format!("{:?}", eui48.formatted_address())
-            }
-            Record::EUI64(eui64) => {
-                format!("{:?}", eui64.formatted_address())
-            }
-            Record::HINFO(hinfo) => {
-                format!("{} {}", Ascii(&hinfo.cpu), Ascii(&hinfo.os))
-            }
-            Record::LOC(loc) => {
-                format!("{} ({}, {}) ({}, {}, {})",
-                    loc.size,
-                    loc.horizontal_precision,
-                    loc.vertical_precision,
-                    loc.latitude .map_or_else(|| "Out of range".into(), |e| e.to_string()),
-                    loc.longitude.map_or_else(|| "Out of range".into(), |e| e.to_string()),
-                    loc.altitude,
-                )
-            }
-            Record::MX(mx) => {
-                format!("{} {:?}", mx.preference, mx.exchange.to_string())
-            }
-            Record::NAPTR(naptr) => {
-                format!("{} {} {} {} {} {:?}",
-                    naptr.order,
-                    naptr.preference,
-                    Ascii(&naptr.flags),
-                    Ascii(&naptr.service),
-                    Ascii(&naptr.regex),
-                    naptr.replacement.to_string(),
-                )
-            }
-            Record::NS(ns) => {
-                format!("{:?}", ns.nameserver.to_string())
-            }
-            Record::OPENPGPKEY(opgp) => {
-                format!("{:?}", opgp.base64_key())
-            }
-            Record::PTR(ptr) => {
-                format!("{:?}", ptr.cname.to_string())
-            }
-            Record::SSHFP(sshfp) => {
-                format!("{} {} {}",
-                    sshfp.algorithm,
-                    sshfp.fingerprint_type,
-                    sshfp.hex_fingerprint(),
-                )
-            }
-            Record::SOA(soa) => {
-                format!("{:?} {:?} {} {} {} {} {}",
-                    soa.mname.to_string(),
-                    soa.rname.to_string(),
-                    soa.serial,
-                    self.format_duration(soa.refresh_interval),
-                    self.format_duration(soa.retry_interval),
-                    self.format_duration(soa.expire_limit),
-                    self.format_duration(soa.minimum_ttl),
-                )
-            }
-            Record::SRV(srv) => {
-                format!("{} {} {:?}:{}", srv.priority, srv.weight, srv.target.to_string(), srv.port)
-            }
-            Record::TLSA(tlsa) => {
-                format!("{} {} {} {:?}",
-                    tlsa.certificate_usage,
-                    tlsa.selector,
-                    tlsa.matching_type,
-                    tlsa.hex_certificate_data(),
-                )
-            }
-            Record::TXT(txt) => {
-                let messages = txt.messages.iter().map(|t| Ascii(t).to_string()).collect::<Vec<_>>();
-                messages.join(", ")
-            }
-            Record::URI(uri) => {
-                format!("{} {} {}", uri.priority, uri.weight, Ascii(&uri.target))
-            }
-            Record::SMIMEA(smimea) => {
-                format!("{} {} {} {}",
-                    smimea.certificate_usage,
-                    smimea.selector,
-                    smimea.matching_type,
-                    smimea.hex_certificate_data(),
-                )
-            }
-            Record::DS(ds) => {
-                format!("{} {} {} {}", ds.key_tag, ds.algorithm, ds.digest_type, ds.digest.iter().map(|b| format!("{:02x}", b)).collect::<String>())
-            }
-            Record::RRSIG(rrsig) => {
-                format!("{} {} {} {} {} {} {} {:?} {}",
-                    rrsig.type_covered,
-                    rrsig.algorithm,
-                    rrsig.labels,
-                    rrsig.original_ttl,
-                    rrsig.signature_expiration,
-                    rrsig.signature_inception,
-                    rrsig.key_tag,
-                    rrsig.signers_name.to_string(),
-                    rrsig.signature.iter().map(|b| format!("{:02x}", b)).collect::<String>()
-                )
-            }
-            Record::NSEC(nsec) => {
-                format!("{:?} {:?}", nsec.next_domain_name.to_string(), nsec.type_bit_maps.iter().map(|b| format!("{:02x}", b)).collect::<String>())
-            }
-            Record::DNSKEY(dnskey) => {
-                format!("{} {} {} {}", dnskey.flags, dnskey.protocol, dnskey.algorithm, dnskey.public_key.iter().map(|b| format!("{:02x}", b)).collect::<String>())
-            }
-            Record::DHCID(dhcid) => {
-                format!("{} {} {}", dhcid.identifier_type_code, dhcid.digest_type_code, dhcid.digest.iter().map(|b| format!("{:02x}", b)).collect::<String>())
-            }
-            Record::NSEC3(nsec3) => {
-                format!("{} {} {} {} {:?} {:?}",
-                    nsec3.hash_algorithm,
-                    nsec3.flags,
-                    nsec3.iterations,
-                    nsec3.salt.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-                    nsec3.next_hashed_owner_name.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-                    nsec3.type_bit_maps.iter().map(|b| format!("{:02x}", b)).collect::<String>()
-                )
-            }
-            Record::NSEC3PARAM(nsec3param) => {
-                format!("{} {} {} {}", nsec3param.hash_algorithm, nsec3param.flags, nsec3param.iterations, nsec3param.salt.iter().map(|b| format!("{:02x}", b)).collect::<String>())
-            }
-            Record::IPSECKEY(ipseckey) => {
-                format!("{} {} {} {:?} {}",
-                    ipseckey.precedence,
-                    ipseckey.gateway_type,
-                    ipseckey.algorithm,
-                    ipseckey.gateway,
-                    ipseckey.public_key.iter().map(|b| format!("{:02x}", b)).collect::<String>()
-                )
-            }
-            Record::Other { bytes, .. } => {
-                format!("{:?}", bytes)
-            }
-        }
-    }
-
-    /// Formats a summary of an OPT pseudo-record. Pseudo-records have a different
-    /// structure than standard ones.
-    pub fn pseudo_record_payload_summary(self, opt: OPT) -> String {
-        format!("{} {} {} {} {:?}",
-            opt.udp_payload_size,
-            opt.higher_bits,
-            opt.edns0_version,
-            opt.flags,
-            opt.data)
+    pub fn record_payload_summary(self, record: &hickory_resolver::proto::rr::RData) -> String {
+        record.to_string()
     }
 
     /// Formats a duration depending on whether it should be displayed as
@@ -395,490 +203,18 @@ fn format_duration_hms(seconds: u32) -> String {
     }
 }
 
-/// Serialises multiple DNS queries as a JSON value.
-fn json_queries(queries: Vec<Query>) -> JsonValue {
-    let queries = queries.iter().map(|q| {
-        object! {
-            "name": q.qname.to_string(),
-            "class": json_class(q.qclass),
-            "type": json_record_type_name(q.qtype),
-        }
-    }).collect::<Vec<_>>();
-
-    queries.into()
-}
-
-/// Serialises multiple received DNS answers as a JSON value.
-fn json_answers(answers: Vec<Answer>) -> JsonValue {
-    let answers = answers.into_iter().map(|a| {
-        match a {
-            Answer::Standard { qname, qclass, ttl, record } => {
-                object! {
-                    "name": qname.to_string(),
-                    "class": json_class(qclass),
-                    "ttl": ttl,
-                    "type": json_record_name(&record),
-                    "data": json_record_data(record),
-                }
-            }
-            Answer::Pseudo { qname, opt } => {
-                object! {
-                    "name": qname.to_string(),
-                    "type": "OPT",
-                    "data": {
-                        "version": opt.edns0_version,
-                        "data": opt.data,
-                    },
-                }
-            }
-        }
-    }).collect::<Vec<_>>();
-
-    answers.into()
-}
-
-
-fn json_class(class: QClass) -> JsonValue {
-    match class {
-        QClass::IN        => "IN".into(),
-        QClass::CH        => "CH".into(),
-        QClass::HS        => "HS".into(),
-        QClass::Other(n)  => n.into(),
-    }
-}
-
-
-/// Serialises a DNS record type name.
-fn json_record_type_name(record: RecordType) -> JsonValue {
-    match record {
-        RecordType::A           => "A".into(),
-        RecordType::AAAA        => "AAAA".into(),
-        RecordType::CAA         => "CAA".into(),
-        RecordType::CNAME       => "CNAME".into(),
-        RecordType::EUI48       => "EUI48".into(),
-        RecordType::EUI64       => "EUI64".into(),
-        RecordType::HINFO       => "HINFO".into(),
-        RecordType::LOC         => "LOC".into(),
-        RecordType::MX          => "MX".into(),
-        RecordType::NAPTR       => "NAPTR".into(),
-        RecordType::NS          => "NS".into(),
-        RecordType::OPENPGPKEY  => "OPENPGPKEY".into(),
-        RecordType::PTR         => "PTR".into(),
-        RecordType::SOA         => "SOA".into(),
-        RecordType::SRV         => "SRV".into(),
-        RecordType::SSHFP       => "SSHFP".into(),
-        RecordType::TXT         => "TXT".into(),
-        RecordType::TLSA        => "TLSA".into(),
-        RecordType::URI         => "URI".into(),
-        RecordType::SMIMEA      => "SMIMEA".into(),
-        RecordType::DS          => "DS".into(),
-        RecordType::RRSIG       => "RRSIG".into(),
-        RecordType::NSEC        => "NSEC".into(),
-        RecordType::DNSKEY      => "DNSKEY".into(),
-        RecordType::DHCID       => "DHCID".into(),
-        RecordType::NSEC3       => "NSEC3".into(),
-        RecordType::NSEC3PARAM  => "NSEC3PARAM".into(),
-        RecordType::IPSECKEY    => "IPSECKEY".into(),
-        RecordType::Other(unknown) => {
-            match unknown {
-                UnknownQtype::HeardOf(name, _)  => (*name).into(),
-                UnknownQtype::UnheardOf(num)    => (num).into(),
-            }
-        }
-    }
-}
-
-/// Serialises a DNS record type name.
-fn json_record_name(record: &Record) -> JsonValue {
-    match record {
-        Record::A(_)           => "A".into(),
-        Record::AAAA(_)        => "AAAA".into(),
-        Record::CAA(_)         => "CAA".into(),
-        Record::CNAME(_)       => "CNAME".into(),
-        Record::EUI48(_)       => "EUI48".into(),
-        Record::EUI64(_)       => "EUI64".into(),
-        Record::HINFO(_)       => "HINFO".into(),
-        Record::LOC(_)         => "LOC".into(),
-        Record::MX(_)          => "MX".into(),
-        Record::NAPTR(_)       => "NAPTR".into(),
-        Record::NS(_)          => "NS".into(),
-        Record::OPENPGPKEY(_)  => "OPENPGPKEY".into(),
-        Record::PTR(_)         => "PTR".into(),
-        Record::SOA(_)         => "SOA".into(),
-        Record::SRV(_)         => "SRV".into(),
-        Record::SSHFP(_)       => "SSHFP".into(),
-        Record::TLSA(_)        => "TLSA".into(),
-        Record::TXT(_)         => "TXT".into(),
-        Record::URI(_)         => "URI".into(),
-        Record::SMIMEA(_)      => "SMIMEA".into(),
-        Record::DS(_)          => "DS".into(),
-        Record::RRSIG(_)       => "RRSIG".into(),
-        Record::NSEC(_)        => "NSEC".into(),
-        Record::DNSKEY(_)      => "DNSKEY".into(),
-        Record::DHCID(_)       => "DHCID".into(),
-        Record::NSEC3(_)       => "NSEC3".into(),
-        Record::NSEC3PARAM(_)  => "NSEC3PARAM".into(),
-        Record::IPSECKEY(_)    => "IPSECKEY".into(),
-        Record::Other { type_number, .. } => {
-            match type_number {
-                UnknownQtype::HeardOf(name, _)  => (*name).into(),
-                UnknownQtype::UnheardOf(num)    => (*num).into(),
-            }
-        }
-    }
-}
-
-
-/// Serialises a received DNS record as a JSON value.
-
-/// Even though DNS doesn’t specify a character encoding, strings are still
-/// converted from UTF-8, because JSON specifies UTF-8.
-fn json_record_data(record: Record) -> JsonValue {
-    match record {
-        Record::A(a) => {
-            object! {
-                "address": a.address.to_string(),
-            }
-        }
-        Record::AAAA(aaaa) => {
-            object! {
-                "address": aaaa.address.to_string(),
-            }
-        }
-        Record::CAA(caa) => {
-            object! {
-                "critical": caa.critical,
-                "tag": String::from_utf8_lossy(&caa.tag).to_string(),
-                "value": String::from_utf8_lossy(&caa.value).to_string(),
-            }
-        }
-        Record::CNAME(cname) => {
-            object! {
-                "domain": cname.domain.to_string(),
-            }
-        }
-        Record::EUI48(eui48) => {
-            object! {
-                "identifier": eui48.formatted_address(),
-            }
-        }
-        Record::EUI64(eui64) => {
-            object! {
-                "identifier": eui64.formatted_address(),
-            }
-        }
-        Record::HINFO(hinfo) => {
-            object! {
-                "cpu": String::from_utf8_lossy(&hinfo.cpu).to_string(),
-                "os": String::from_utf8_lossy(&hinfo.os).to_string(),
-            }
-        }
-        Record::LOC(loc) => {
-            object! {
-                "size": loc.size.to_string(),
-                "precision": {
-                    "horizontal": loc.horizontal_precision,
-                    "vertical": loc.vertical_precision,
-                },
-                "point": {
-                    "latitude": loc.latitude.map(|e| e.to_string()),
-                    "longitude": loc.longitude.map(|e| e.to_string()),
-                    "altitude": loc.altitude.to_string(),
-                },
-            }
-        }
-        Record::MX(mx) => {
-            object! {
-                "preference": mx.preference,
-                "exchange": mx.exchange.to_string(),
-            }
-        }
-        Record::NAPTR(naptr) => {
-            object! {
-                "order": naptr.order,
-                "flags": String::from_utf8_lossy(&naptr.flags).to_string(),
-                "service": String::from_utf8_lossy(&naptr.service).to_string(),
-                "regex": String::from_utf8_lossy(&naptr.regex).to_string(),
-                "replacement": naptr.replacement.to_string(),
-            }
-        }
-        Record::NS(ns) => {
-            object! {
-                "nameserver": ns.nameserver.to_string(),
-            }
-        }
-        Record::OPENPGPKEY(opgp) => {
-            object! {
-                "key": opgp.base64_key(),
-            }
-        }
-        Record::PTR(ptr) => {
-            object! {
-                "cname": ptr.cname.to_string(),
-            }
-        }
-        Record::SSHFP(sshfp) => {
-            object! {
-                "algorithm": sshfp.algorithm,
-                "fingerprint_type": sshfp.fingerprint_type,
-                "fingerprint": sshfp.hex_fingerprint(),
-            }
-        }
-        Record::SOA(soa) => {
-            object! {
-                "mname": soa.mname.to_string(),
-            }
-        }
-        Record::SRV(srv) => {
-            object! {
-                "priority": srv.priority,
-                "weight": srv.weight,
-                "port": srv.port,
-                "target": srv.target.to_string(),
-            }
-        }
-        Record::TLSA(tlsa) => {
-            object! {
-                "certificate_usage": tlsa.certificate_usage,
-                "selector": tlsa.selector,
-                "matching_type": tlsa.matching_type,
-                "certificate_data": tlsa.hex_certificate_data(),
-            }
-        }
-        Record::TXT(txt) => {
-            let ms = txt.messages.into_iter()
-                        .map(|txt| String::from_utf8_lossy(&txt).to_string())
-                        .collect::<Vec<_>>();
-            object! {
-                "messages": ms,
-            }
-        }
-        Record::URI(uri) => {
-            object! {
-                "priority": uri.priority,
-                "weight": uri.weight,
-                "target": String::from_utf8_lossy(&uri.target).to_string(),
-            }
-        }
-        Record::SMIMEA(smimea) => {
-            object! {
-                "certificate_usage": smimea.certificate_usage,
-                "selector": smimea.selector,
-                "matching_type": smimea.matching_type,
-                "certificate_data": smimea.certificate_data,
-            }
-        }
-        Record::DS(ds) => {
-            object! {
-                "key_tag": ds.key_tag,
-                "algorithm": ds.algorithm,
-                "digest_type": ds.digest_type,
-                "digest": ds.digest,
-            }
-        }
-        Record::RRSIG(rrsig) => {
-            object! {
-                "type_covered": rrsig.type_covered,
-                "algorithm": rrsig.algorithm,
-                "labels": rrsig.labels,
-                "original_ttl": rrsig.original_ttl,
-                "signature_expiration": rrsig.signature_expiration,
-                "signature_inception": rrsig.signature_inception,
-                "key_tag": rrsig.key_tag,
-                "signers_name": rrsig.signers_name.to_string(),
-                "signature": rrsig.signature,
-            }
-        }
-        Record::NSEC(nsec) => {
-            object! {
-                "next_domain_name": nsec.next_domain_name.to_string(),
-                "type_bit_maps": nsec.type_bit_maps,
-            }
-        }
-        Record::DNSKEY(dnskey) => {
-            object! {
-                "flags": dnskey.flags,
-                "protocol": dnskey.protocol,
-                "algorithm": dnskey.algorithm,
-                "public_key": dnskey.public_key,
-            }
-        }
-        Record::DHCID(dhcid) => {
-            object! {
-                "identifier_type_code": dhcid.identifier_type_code,
-                "digest_type_code": dhcid.digest_type_code,
-                "digest": dhcid.digest,
-            }
-        }
-        Record::NSEC3(nsec3) => {
-            object! {
-                "hash_algorithm": nsec3.hash_algorithm,
-                "flags": nsec3.flags,
-                "iterations": nsec3.iterations,
-                "salt": nsec3.salt,
-                "next_hashed_owner_name": nsec3.next_hashed_owner_name,
-                "type_bit_maps": nsec3.type_bit_maps,
-            }
-        }
-        Record::NSEC3PARAM(nsec3param) => {
-            object! {
-                "hash_algorithm": nsec3param.hash_algorithm,
-                "flags": nsec3param.flags,
-                "iterations": nsec3param.iterations,
-                "salt": nsec3param.salt,
-            }
-        }
-        Record::IPSECKEY(ipseckey) => {
-            object! {
-                "precedence": ipseckey.precedence,
-                "gateway_type": ipseckey.gateway_type,
-                "algorithm": ipseckey.algorithm,
-                "gateway": ipseckey.gateway,
-                "public_key": ipseckey.public_key,
-            }
-        }
-        Record::Other { bytes, .. } => {
-            object! {
-                "bytes": bytes,
-            }
-        }
-    }
-}
-
-
-/// A wrapper around displaying characters that escapes quotes and
-/// backslashes, and writes control and upper-bit bytes as their number rather
-/// than their character. This is needed because even though such characters
-/// are not allowed in domain names, packets can contain anything, and we need
-/// a way to display the response, whatever it is.
-struct Ascii<'a>(&'a [u8]);
-
-impl fmt::Display for Ascii<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"")?;
-
-        for byte in self.0.iter().copied() {
-            if byte < 32 || byte >= 128 {
-                write!(f, "\\{}", byte)?;
-            }
-            else if byte == b'"' {
-                write!(f, "\\\"")?;
-            }
-            else if byte == b'\\' {
-                write!(f, "\\\\")?;
-            }
-            else {
-                write!(f, "{}", byte as char)?;
-            }
-        }
-
-        write!(f, "\"")
-    }
-}
-
-
-/// Prints a message describing the “error code” field of a DNS packet. This
-/// happens when the packet was received correctly, but the server indicated
-/// an error.
-pub fn print_error_code(rcode: ErrorCode) {
-    match rcode {
-        ErrorCode::FormatError     => println!("Status: Format Error"),
-        ErrorCode::ServerFailure   => println!("Status: Server Failure"),
-        ErrorCode::NXDomain        => println!("Status: NXDomain"),
-        ErrorCode::NotImplemented  => println!("Status: Not Implemented"),
-        ErrorCode::QueryRefused    => println!("Status: Query Refused"),
-        ErrorCode::BadVersion      => println!("Status: Bad Version"),
-        ErrorCode::Private(num)    => println!("Status: Private Reason ({})", num),
-        ErrorCode::Other(num)      => println!("Status: Other Failure ({})", num),
-    }
-}
-
-/// Returns the “phase” of operation where an error occurred. This gets shown
-/// to the user so they can debug what went wrong.
-fn erroneous_phase(error: &TransportError) -> &'static str {
-    match error {
-        TransportError::WireError(_)          => "protocol",
-        TransportError::TruncatedResponse     |
-        TransportError::NetworkError(_)       => "network",
-        TransportError::RustlsInvalidDnsNameError(_) |
-        TransportError::RustlsError(_) |
-        TransportError::RustlsInvalidDnsNameError2(_) => "tls", // TODO: Actually wrong, could be https
-        #[cfg(feature = "with_https")]
-        TransportError::HttpError(_)          |
-        TransportError::WrongHttpStatus(_,_)  => "http",
-    }
-}
-
-/// Formats an error into its human-readable message.
-fn error_message(error: TransportError) -> String {
-    match error {
-        TransportError::WireError(e)          => wire_error_message(e),
-        TransportError::TruncatedResponse     => "Truncated response".into(),
-        TransportError::NetworkError(e)       => e.to_string(),
-        TransportError::RustlsInvalidDnsNameError(e) => e.to_string(),
-        TransportError::RustlsError(e) => e.to_string(),
-        TransportError::RustlsInvalidDnsNameError2(e) => e.to_string(),
-        #[cfg(feature = "with_https")]
-        TransportError::HttpError(e)          => e.to_string(),
-        #[cfg(feature = "with_https")]
-        TransportError::WrongHttpStatus(t,r)  => format!("Nameserver returned HTTP {} ({})", t, r.unwrap_or_else(|| "No reason".into()))
-    }
-}
-
-/// Formats a wire error into its human-readable message, describing what was
-/// wrong with the packet we received.
-fn wire_error_message(error: WireError) -> String {
-    match error {
-        WireError::IO => {
-            "Malformed packet: insufficient data".into()
-        }
-        WireError::WrongRecordLength { stated_length, mandated_length: MandatedLength::Exactly(len) } => {
-            format!("Malformed packet: record length should be {}, got {}", len, stated_length )
-        }
-        WireError::WrongRecordLength { stated_length, mandated_length: MandatedLength::AtLeast(len) } => {
-            format!("Malformed packet: record length should be at least {}, got {}", len, stated_length )
-        }
-        WireError::WrongLabelLength { stated_length, length_after_labels } => {
-            format!("Malformed packet: length {} was specified, but read {} bytes", stated_length, length_after_labels)
-        }
-        WireError::TooMuchRecursion(indices) => {
-            format!("Malformed packet: too much recursion: {:?}", indices)
-        }
-        WireError::OutOfBounds(index) => {
-            format!("Malformed packet: out of bounds ({})", index)
-        }
-        WireError::WrongVersion { stated_version, maximum_supported_version } => {
-            format!("Malformed packet: record specifies version {}, expected up to {}", stated_version, maximum_supported_version)
-        }
-    }
-}
-
-
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-    fn escape_quotes() {
-        assert_eq!(Ascii(b"Mallard \"The Duck\" Fillmore").to_string(),
-                   "\"Mallard \\\"The Duck\\\" Fillmore\"");
-    }
-
-    #[test]
-    fn escape_backslashes() {
-        assert_eq!(Ascii(b"\\").to_string(),
-                   "\"\\\\\"");
-    }
-
-    #[test]
-    fn escape_lows() {
-        assert_eq!(Ascii(b"\n\r\t").to_string(),
-                   "\"\\10\\13\\9\"");
-    }
-
-    #[test]
-    fn escape_highs() {
-        assert_eq!(Ascii("pâté".as_bytes()).to_string(),
-                   "\"p\\195\\162t\\195\\169\"");
+    fn test_format_duration() {
+        assert_eq!(format_duration_hms(0), "0s");
+        assert_eq!(format_duration_hms(59), "59s");
+        assert_eq!(format_duration_hms(60), "1m00s");
+        assert_eq!(format_duration_hms(3599), "59m59s");
+        assert_eq!(format_duration_hms(3600), "1h00m00s");
+        assert_eq!(format_duration_hms(86399), "23h59m59s");
+        assert_eq!(format_duration_hms(86400), "1d0h00m00s");
     }
 }

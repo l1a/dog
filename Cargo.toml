@@ -20,13 +20,6 @@ path = "src/main.rs"
 doctest = false
 
 
-[workspace]
-members = [
-  "dns",
-  "dns-transport",
-]
-
-
 # make dev builds faster by excluding debug symbols
 [profile.dev]
 debug = false
@@ -39,10 +32,8 @@ panic = "abort"
 
 
 [dependencies]
-
-# dns stuff
-dns = { path = "./dns" }
-dns-transport = { path = "./dns-transport" }
+hickory-resolver = "0.24"
+tokio = { version = "1", features = ["full"] }
 
 # command-line
 ansi_term = "0.12"
@@ -67,9 +58,3 @@ datetime = { version = "0.5.2", default-features = false }
 
 [dev-dependencies]
 pretty_assertions = "1.4"
-
-[features]
-default = ["with_idna", "with_https"]
-with_idna = ["dns/with_idna"]
-
-with_https = ["dns-transport/with_https"]

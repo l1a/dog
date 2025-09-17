@@ -20,7 +20,6 @@ Dogs _can_ look up!
 
 **dog** is a command-line DNS client, like `dig`.
 It has colourful output, understands normal command-line argument syntax, supports the DNS-over-TLS and DNS-over-HTTPS protocols, and can emit JSON.
-It also has comprehensive support for DNSSEC record types including DS, RRSIG, NSEC, DNSKEY, NSEC3, and more.
 
 ## Examples
 
@@ -28,9 +27,6 @@ It also has comprehensive support for DNSSEC record types including DS, RRSIG, N
     dog example.net MX                       ...looking up MX records instead
     dog example.net MX @1.1.1.1              ...using a specific nameserver instead
     dog example.net MX @1.1.1.1 -T           ...using TCP rather than UDP
-    dog example.net DS                       ...querying DNSSEC delegation signer records
-    dog example.net DNSKEY                   ...looking up DNSSEC public keys
-    dog example.net RRSIG                    ...checking DNSSEC signatures
     dog -q example.net -t MX -n 1.1.1.1 -T   As above, but using explicit arguments
 
 ---
@@ -44,12 +40,6 @@ It also has comprehensive support for DNSSEC record types including DS, RRSIG, N
     -t, --type=TYPE          Type of the DNS record being queried (A, MX, NS...)
     -n, --nameserver=ADDR    Address of the nameserver to send packets to
     --class=CLASS            Network class of the DNS record being queried (IN, CH, HS)
-
-### Sending options
-
-    --edns=SETTING           Whether to OPT in to EDNS (disable, hide, show)
-    --txid=NUMBER            Set the transaction ID to a specific value
-    -Z=TWEAKS                Set uncommon protocol-level tweaks
 
 ### Protocol options
 
@@ -97,10 +87,7 @@ To build, download the source code and run:
     $ cargo build
     $ cargo test
 
-- The [just](https://github.com/casey/just) command runner can be used to run some helpful development commands, in a manner similar to `make`.
-Run `just --list` to get an overview of what’s available.
-
-- If you are compiling a copy for yourself, be sure to run `cargo build --release` or `just build-release` to benefit from release-mode optimisations.
+- If you are compiling a copy for yourself, be sure to run `cargo build --release` to benefit from release-mode optimisations.
 Copy the resulting binary, which will be in the `target/release` directory, into a folder in your `$PATH`.
 `/usr/local/bin` is usually a good choice.
 
@@ -135,25 +122,6 @@ If you have a copy installed, you can run:
 Specsheet will test the compiled binary by making DNS requests over the network, checking that dog returns the correct results and does not crash.
 Note that this will expose your IP address.
 For more information, read [the xtests README](xtests/README.md).
-
-
-### Feature toggles
-
-dog has two Cargo features that can be switched off to remove functionality.
-While doing so makes dog less useful, it results in a smaller binary that takes less time to build.
-
-There are two feature toggles available, both of which are active by default:
-
-- `with_idna`, which enables [IDNA](https://en.wikipedia.org/wiki/Internationalized_domain_name) processing
-- `with_https`, which enables DNS-over-HTTPS (requires built-in TLS support)
-
-DNS-over-TLS support is now built-in and always available.
-
-Use `cargo` to build a binary that uses feature toggles. For example, to disable HTTPS support but keep IDNA support enabled, you can run:
-
-    $ cargo build --no-default-features --features=with_idna
-
-The list of features that have been disabled can be checked at runtime as part of the `--version` string.
 
 
 ---

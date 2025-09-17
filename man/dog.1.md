@@ -63,19 +63,6 @@ If more than one domain, type, nameserver, or class is specified, dog will perfo
 DNS traditionally uses port 53 for both TCP and UDP. To use a resolver with a different port, include the port number after a colon (`:`) in the nameserver address.
 
 
-SENDING OPTIONS
-===============
-
-`--edns=SETTING`
-: Whether to opt in to DNS. This can be ‘`disable`’, ‘`hide`’, or ‘`show`’.
-
-`--txid=NUMBER`
-: Set the transaction ID to a specific value.
-
-`-Z=TWEAKS`
-: Set uncommon protocol-level tweaks.
-
-
 TRANSPORT OPTIONS
 =================
 
@@ -110,7 +97,7 @@ OUTPUT OPTIONS
 : Display the output as JSON.
 
 `--color`, `--colour=WHEN`
-: When to colourise the output. This can be ‘`always`’, ‘`automatic`’, or ‘`never`’.
+: When to colourise the output. This can be ‘`always`’ or ‘`automatic`’, or ‘`never`’.
 
 `--seconds`
 : Do not format durations as hours and minutes; instead, display them as seconds.
@@ -139,111 +126,6 @@ dog responds to the following environment variables:
 Set this to any non-empty value to have dog emit debugging information to standard error. For more in-depth output, set this to the exact string ‘`trace`’.
 
 
-RECORD TYPES
-============
-
-dog understands and can interpret the following record types:
-
-`A`
-: IPv4 addresses
-
-`AAAA`
-: IPv6 addresses
-
-`CAA`
-: permitted certificate authorities
-
-`CNAME`
-: canonical domain aliases
-
-`DHCID`
-: DHCP identifiers for DNS updates
-
-`DNSKEY`
-: DNS public keys for DNSSEC
-
-`DS`
-: delegation signer records for DNSSEC
-
-`HINFO`
-: system information and, sometimes, forbidden request explanations
-
-`IPSECKEY`
-: IPsec keys
-
-`LOC`
-: location information
-
-`MX`
-: e-mail server addresses
-
-`NAPTR`
-: DDDS rules
-
-`NS`
-: domain name servers
-
-`NSEC`
-: next secure records for DNSSEC
-
-`NSEC3`
-: next secure v3 records for DNSSEC
-
-`NSEC3PARAM`
-: NSEC3 parameters
-
-`OPT`
-: extensions to the DNS protocol
-
-`PTR`
-: pointers to canonical names, usually for reverse lookups
-
-`RRSIG`
-: DNSSEC signatures
-
-`SMIMEA`
-: S/MIME certificate associations
-
-`SOA`
-: administrative information about zones
-
-`SRV`
-: IP addresses with port numbers
-
-`SSHFP`
-: SSH key fingerprints
-
-`TLSA`
-: TLS certificates, public keys, and hashes
-
-`TXT`
-: arbitrary textual information
-
-When a response DNS packet contains a record of one of these known types, dog will display it in a table containing the type name and a human-readable summary of its contents.
-
-Records with a type number that does not map to any known record type will still be displayed. As they cannot be interpreted, their contents will be displayed as a series of numbers instead.
-
-dog also contains a list of record type names that it knows the type number of, but is not able to interpret, such as `IXFR` or `ANY` or `AFSDB`. These are acceptable as command-line arguments, meaning you can send an AFSDB request with ‘`dog AFSDB`’. However, their response contents will still be displayed as numbers. They may be supported in future versions of dog.
-
-
-PROTOCOL TWEAKS
-===============
-
-The `-Z` command-line argument can be used one or more times to set some protocol-level options in the DNS queries that get sent. It accepts the following values:
-
-`aa`
-: Sets the `AA` (Authoritative Answers) bit in the query.
-
-`ad`
-: Sets the `AD` (Authentic Data) bit in the query.
-
-`bufsize=NUM`
-: Sets the UDP payload size field in the OPT field in the query. This has no effect if EDNS is diabled.
-
-`cd`
-: Sets the `CD` (Checking Disabled) bit in the query.
-
-
 EXIT STATUSES
 =============
 
@@ -258,9 +140,6 @@ EXIT STATUSES
 
 3
 : If there was a problem with the command-line arguments.
-
-4
-: If there was a problem obtaining the system nameserver information.
 
 
 AUTHOR

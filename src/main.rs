@@ -22,16 +22,14 @@
 #![deny(unsafe_code)]
 
 use log::*;
+use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 
 mod colours;
-mod connect;
 mod hints;
 mod logger;
 mod output;
-mod requests;
-mod resolve;
 mod table;
-mod txid;
 
 mod options;
 use self::options::*;
@@ -39,7 +37,8 @@ use self::options::*;
 
 /// Configures logging, parses the command-line options, and handles any
 /// errors before passing control over to the Dog type.
-fn main() {
+#[tokio::main]
+async fn main() {
     use std::env;
     use std::process::exit;
 
@@ -53,15 +52,15 @@ fn main() {
     match Options::getopts(env::args_os().skip(1)) {
         OptionsResult::Ok(options) => {
             info!("Running with options -> {:#?}", options);
-            exit(run(options));
+            exit(run(options).await);
         }
 
         OptionsResult::Help(help_reason, use_colours) => {
             if use_colours.should_use_colours() {
-                print!("{}", include_str!(concat!(env!("OUT_DIR"), "/usage.pretty.txt")));
+                print!("{}", usage_pretty());
             }
             else {
-                print!("{}", include_str!(concat!(env!("OUT_DIR"), "/usage.bland.txt")));
+                print!("{}", usage_bland());
             }
 
             if help_reason == HelpReason::NoDomains {
@@ -74,10 +73,10 @@ fn main() {
 
         OptionsResult::Version(use_colours) => {
             if use_colours.should_use_colours() {
-                print!("{}", include_str!(concat!(env!("OUT_DIR"), "/version.pretty.txt")));
+                print!("{}", version_pretty());
             }
             else {
-                print!("{}", include_str!(concat!(env!("OUT_DIR"), "/version.bland.txt")));
+                print!("{}", version_bland());
             }
 
             exit(exits::SUCCESS);
@@ -95,12 +94,26 @@ fn main() {
     }
 }
 
+fn usage_pretty() -> &'static str {
+    include_str!(concat!(env!("OUT_DIR"), "/usage.pretty.txt"))
+}
+
+fn usage_bland() -> &'static str {
+    include_str!(concat!(env!("OUT_DIR"), "/usage.bland.txt"))
+}
+
+fn version_pretty() -> &'static str {
+    include_str!(concat!(env!("OUT_DIR"), "/version.pretty.txt"))
+}
+
+fn version_bland() -> &'static str {
+    include_str!(concat!(env!("OUT_DIR"), "/version.bland.txt"))
+}
+
 
 /// Runs dog with some options, returning the status to exit with.
-fn run(Options { requests, format, measure_time }: Options) -> i32 {
+async fn run(Options { requests, format, measure_time }: Options) -> i32 {
     use std::time::Instant;
-
-    let should_show_opt = requests.edns.should_show();
 
     let mut responses = Vec::new();
     let timer = if measure_time { Some(Instant::now()) } else { None };
@@ -121,42 +134,24 @@ fn run(Options { requests, format, measure_time }: Options) -> i32 {
         }
     }
 
-    let request_tuples = match requests.generate() {
-        Ok(rt) => rt,
-        Err(e) => {
-            eprintln!("Unable to obtain resolver: {}", e);
-            return exits::SYSTEM_ERROR;
-        }
-    };
+    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
-    for (transport, request_list) in request_tuples {
-        let request_list_len = request_list.len();
-        for (i, request) in request_list.into_iter().enumerate() {
-            let result = transport.send(&request);
+    for domain in &requests.inputs.domains {
+        for qtype in requests.inputs.record_types.iter().copied() {
+            let result = resolver.lookup(domain.to_string().as_str(), qtype).await;
 
             match result {
-                Ok(mut response) => {
-                    if response.flags.error_code.is_some() && i != request_list_len - 1 {
-                        continue;
-                    }
-
-                    if ! should_show_opt {
-                        response.answers.retain(dns::Answer::is_standard);
-                        response.authorities.retain(dns::Answer::is_standard);
-                        response.additionals.retain(dns::Answer::is_standard);
-                    }
-
+                Ok(response) => {
                     responses.push(response);
-                    break;
                 }
                 Err(e) => {
                     format.print_error(e);
                     errored = true;
-                    break;
                 }
             }
         }
     }
+
 
     let duration = timer.map(|t| t.elapsed());
     if format.print(responses, duration) {
@@ -188,7 +183,4 @@ mod exits {
 
     /// Exit code for when the command-line options are invalid.
     pub const OPTIONS_ERROR: i32 = 3;
-
-    /// Exit code for when the system network configuration could not be determined.
-    pub const SYSTEM_ERROR: i32 = 4;
 }
