@@ -32,7 +32,7 @@ panic = "abort"
 
 
 [dependencies]
-hickory-resolver = { version = "0.24", features = ["dns-over-rustls", "dns-over-https-rustls"] }
+hickory-resolver = { version = "0.24.1", features = ["dns-over-rustls", "dns-over-https-rustls"] }
 tokio = { version = "1", features = ["full"] }
 
 # command-line
@@ -41,7 +41,7 @@ atty = "0.2"
 getopts = "0.2"
 
 # transaction ID generation
-rand = "0.9"
+rand = "0.8"
 
 # json output
 json = "0.12"
