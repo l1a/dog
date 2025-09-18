@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 use std::env;
+use std::io::{self, BufWriter, Write};
 
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::error::ResolveError;
@@ -121,12 +122,26 @@ impl OutputFormat {
                 }
             }
             Self::Text(uc, tf) => {
-                for response in responses {
-                    let mut table = Table::new(uc.palette(), tf);
-                    for a in response.record_iter() {
-                        table.add_row(a.clone(), Section::Answer);
+                let total_records = responses.iter().flat_map(|r| r.record_iter()).count();
+                if total_records > 100 {
+                    let stdout = io::stdout();
+                    let mut writer = BufWriter::new(stdout);
+                    for response in responses {
+                        let mut table = Table::new(uc.palette(), tf);
+                        for a in response.record_iter() {
+                            table.add_row(a.clone(), Section::Answer);
+                        }
+                        write!(&mut writer, "{}", table.render()).unwrap();
                     }
-                    print!("{}", table.render());
+                    writer.flush().unwrap();
+                } else {
+                    for response in responses {
+                        let mut table = Table::new(uc.palette(), tf);
+                        for a in response.record_iter() {
+                            table.add_row(a.clone(), Section::Answer);
+                        }
+                        print!("{}", table.render());
+                    }
                 }
 
                 if let Some(duration) = duration {
