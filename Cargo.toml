@@ -46,6 +46,9 @@ rand = "0.9"
 # json output
 json = "0.12"
 
+# async utilities
+futures = "0.3"
+
 # logging
 log = "0.4"
 

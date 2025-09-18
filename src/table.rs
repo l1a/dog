@@ -58,7 +58,7 @@ impl Table {
     }
 
     /// Renders the formatted table to a string.
-    fn render(&self) -> String {
+    pub fn render(&self) -> String {
         let mut output = String::new();
 
         if ! self.rows.is_empty() {
@@ -87,6 +87,7 @@ impl Table {
     }
 
     /// Prints the formatted table to stdout.
+    #[allow(dead_code)]
     pub fn print(self, duration: Option<Duration>) {
         print!("{}", self.render());
 

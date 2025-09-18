@@ -121,15 +121,17 @@ impl OutputFormat {
                 }
             }
             Self::Text(uc, tf) => {
-                let mut table = Table::new(uc.palette(), tf);
-
                 for response in responses {
+                    let mut table = Table::new(uc.palette(), tf);
                     for a in response.record_iter() {
                         table.add_row(a.clone(), Section::Answer);
                     }
+                    print!("{}", table.render());
                 }
 
-                table.print(duration);
+                if let Some(duration) = duration {
+                    println!("Ran in {}ms", duration.as_millis());
+                }
         }
         }
 

@@ -34,6 +34,7 @@ mod table;
 
 mod options;
 use self::options::*;
+use futures::future::join_all;
 
 
 /// Configures logging, parses the command-line options, and handles any
@@ -234,51 +235,66 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
 
     let resolver = TokioAsyncResolver::tokio(config.clone(), ResolverOpts::default());
 
+    // Collect all lookup futures for parallel execution
+    let mut futures = Vec::new();
     for domain in &requests.inputs.domains {
         for qtype in requests.inputs.record_types.iter().copied() {
+            let resolver_clone = resolver.clone();
+            let domain_str = domain.clone();
             let query_timer = Instant::now();
-            let result = resolver.lookup(domain.to_string().as_str(), qtype).await;
+            futures.push(async move {
+                let elapsed = query_timer.elapsed();
+                let result = resolver_clone.lookup(&domain_str, qtype).await;
+                (domain_str, qtype, result, elapsed)
+            });
+        }
+    }
 
-            // When printing verbose output, list all the nameservers that are
-            // being queried, rather than just the first one.
-            if verbose {
-                let nameservers: Vec<String> = config.name_servers().iter().map(|ns| ns.socket_addr.to_string()).collect();
-                let nameserver_str = nameservers.join(", ");
-                let transport = requests.inputs.transport_type.map_or("UDP", |t| match t {
-                    TransportType::UDP => "UDP",
-                    TransportType::TCP => "TCP",
-                    TransportType::TLS => "TLS",
-                    TransportType::HTTPS => "HTTPS",
-                });
-                println!("Query for {} {} on {} ({}) finished in {}ms", domain, qtype, nameserver_str, transport, query_timer.elapsed().as_millis());
-            }
+    // Execute all lookups concurrently and collect results
+    let query_results = join_all(futures).await;
 
-            match result {
-                Ok(response) => {
-                    if verbose {
-                        format.print(vec![response], None);
-                    }
-                    else {
-                        responses.push(response);
-                    }
+    // Sort results by domain, then qtype to maintain output order and blocks
+    let mut sorted_results = query_results;
+    sorted_results.sort_by_key(|(domain, qtype, _, _)| (domain.clone(), *qtype));
+
+    // Process results in order
+    for (domain, qtype, result, elapsed) in sorted_results {
+        if verbose {
+            let nameservers: Vec<String> = config.name_servers().iter().map(|ns| ns.socket_addr.to_string()).collect();
+            let nameserver_str = nameservers.join(", ");
+            let transport = requests.inputs.transport_type.map_or("UDP", |t| match t {
+                TransportType::UDP => "UDP",
+                TransportType::TCP => "TCP",
+                TransportType::TLS => "TLS",
+                TransportType::HTTPS => "HTTPS",
+            });
+            println!("Query for {} {} on {} ({}) finished in {}ms", domain, qtype, nameserver_str, transport, elapsed.as_millis());
+        }
+
+        match result {
+            Ok(response) => {
+                if verbose {
+                    format.print(vec![response], None);
                 }
-                Err(e) => {
-                    if requests.inputs.any_query {
-                        if let ResolveErrorKind::NoRecordsFound { .. } = e.kind() {
-                            // Suppress this specific error for ANY queries
-                        } else {
-                            format.print_error(e);
-                            errored = true;
-                        }
+                else {
+                    responses.push(response);
+                }
+            }
+            Err(e) => {
+                if requests.inputs.any_query {
+                    if let ResolveErrorKind::NoRecordsFound { .. } = e.kind() {
+                        // Suppress this specific error for ANY queries
                     } else {
                         format.print_error(e);
                         errored = true;
                     }
+                } else {
+                    format.print_error(e);
+                    errored = true;
                 }
             }
         }
     }
-
 
     if !verbose {
         let duration = timer.map(|t| t.elapsed());
