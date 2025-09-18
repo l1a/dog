@@ -272,7 +272,8 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
                 TransportType::TLS => "TLS",
                 TransportType::HTTPS => "HTTPS",
             });
-            println!("Query for {} {} on {} ({}) finished in {}ms", domain, qtype, nameserver_str, transport, elapsed.as_millis());
+            let duration_ms = elapsed.as_secs_f64() * 1000.0;
+            println!("Query for {} {} on {} ({}) finished in {:.2}ms", domain, qtype, nameserver_str, transport, duration_ms);
         }
 
         match result {
