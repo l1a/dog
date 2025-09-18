@@ -1,6 +1,8 @@
 # Meta options
-complete -c dog -s 'v' -l 'version' -d "Show version of dog"
+complete -c dog -s 'V' -l 'version' -d "Show version of dog"
 complete -c dog -s '?' -l 'help'    -d "Show list of command-line options"
+complete -c dog -s 'l' -l 'list'     -d "List known DNS record types"
+complete -c dog -s 'v' -l 'verbose'  -d "Print verbose information"
 
 # Query options
 complete -c dog -x -a "(__fish_print_hostnames) A AAAA CAA CNAME HINFO MX NS PTR SOA SRV TXT IN CH HS"
@@ -43,4 +45,3 @@ complete -c dog        -l 'colour'     -d "When to colourise the output" -x -a "
     never\t'Never use colours'
 "
 complete -c dog        -l 'seconds'    -d "Do not format durations, display them as seconds"
-complete -c dog        -l 'time'       -d "Print how long the response took to arrive"

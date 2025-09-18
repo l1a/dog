@@ -53,7 +53,7 @@ Register-ArgumentCompleter -Native -CommandName 'dog' -ScriptBlock {
             # if using =, complete including the option name and =
             $completions = $completions | ForEach-Object { "$previousArg=$_" }
         }
-    } 
+    }
     else {
         # if not completing option value, offer DNS type values first
         $completions += $dnsTypeValues
@@ -65,20 +65,22 @@ Register-ArgumentCompleter -Native -CommandName 'dog' -ScriptBlock {
             '-n', '--nameserver',
             '--class',
             '--edns',
-            '--txid',
-            '-Z',
-            '-U', '--udp',
-            '-T', '--tcp',
-            '-S', '--tls',
-            '-H', '--https',
-            '-1', '--short',
-            '-J', '--json',
-            '--color', '--colour',
-            '--seconds',
-            '--time',
-            '-?', '--help',
-            '-v', '--version'
-        ) | Sort-Object
+            [string[]]$allOptions = @(
+                '--txid',
+                '-Z',
+                '-U', '--udp',
+                '-T', '--tcp',
+                '-S', '--tls',
+                '-H', '--https',
+                '-1', '--short',
+                '-J', '--json',
+                '--color', '--colour',
+                '--seconds',
+                '-?', '--help',
+                '-V', '--version',
+                '-v', '--verbose',
+                '-l', '--list'
+            ) | Sort-Object
 
         $completions += $allOptions
     }

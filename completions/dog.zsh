@@ -2,8 +2,10 @@
 
 __dog() {
     _arguments \
-        "(- 1 *)"{-v,--version}"[Show version of dog]" \
+        "(- 1 *)"{-V,--version}"[Show version of dog]" \
         "(- 1 *)"{-\?,--help}"[Show list of command-line options]" \
+        "(- 1 *)"{-l,--list}"[List known DNS record types]" \
+        "(- 1 *)"{-v,--verbose}"[Print verbose information]" \
         {-q,--query}"[Host name or domain name to query]::_hosts" \
         {-t,--type}"[Type of the DNS record being queried]:(record type):(A AAAA CAA CNAME HINFO MX NS PTR SOA SRV TXT)" \
         {-n,--nameserver}"[Address of the nameserver to send packets to]::_hosts;" \
@@ -19,7 +21,6 @@ __dog() {
         {-J,--json}"[Display the output as JSON]" \
         {--color,--colour}"[When to use terminal colours]:(setting):(always automatic never)" \
         --seconds"[Do not format durations, display them as seconds]" \
-        --time"[Print how long the response took to arrive"] \
         '*:filename:_hosts'
 }
 

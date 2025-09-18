@@ -18,9 +18,6 @@ pub struct Options {
     /// The requests to make and how they should be generated.
     pub requests: Requests,
 
-    /// Whether to display the time taken after every query.
-    pub measure_time: bool,
-
     /// Whether to display verbose information.
     pub verbose: bool,
 
@@ -48,37 +45,7 @@ pub enum TransportType {
     HTTPS,
 }
 
-impl TransportType {
-    fn from_args<C>(args: C) -> Result<Option<Self>, OptionsError>
-    where C: IntoIterator,
-          C::Item: AsRef<OsStr>,
-    {
-        let mut transports = Vec::new();
 
-        for arg in args {
-            let arg = arg.as_ref().to_string_lossy();
-            if arg == "--udp" || arg == "-U" {
-                transports.push(Self::UDP);
-            }
-            else if arg == "--tcp" || arg == "-T" {
-                transports.push(Self::TCP);
-            }
-            else if arg == "--tls" || arg == "-S" {
-                transports.push(Self::TLS);
-            }
-            else if arg == "--https" || arg == "-H" {
-                transports.push(Self::HTTPS);
-            }
-        }
-
-        if transports.len() > 1 {
-            Err(OptionsError::MultipleTransports)
-        }
-        else {
-            Ok(transports.pop())
-        }
-    }
-}
 
 impl Options {
 
@@ -119,7 +86,6 @@ impl Options {
         opts.optflag ("J", "json",         "Display the output as JSON");
         opts.optflag ("",  "seconds",      "Do not format durations, display them as seconds");
         opts.optflag ("1", "short",        "Short mode: display nothing but the first result");
-        opts.optflag ("",  "time",         "Print how long the response took to arrive");
 
         // Meta options
         opts.optflag ("V", "version",      "Print version information");
@@ -173,12 +139,11 @@ impl Options {
 
     /// Deduce the options from the command-line matches.
     fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
-        let measure_time = matches.opt_present("time");
         let verbose = matches.opt_present("verbose");
         let format = OutputFormat::deduce(&matches);
         let requests = Requests::deduce(matches, transport_type)?;
 
-        Ok(Self { requests, measure_time, verbose, format })
+        Ok(Self { requests, verbose, format })
     }
 }
 
@@ -450,15 +415,14 @@ pub enum HelpReason {
 pub enum OptionsError {
     /// The query type is invalid.
     InvalidQueryType(String),
-    /// Multiple transport types were specified.
-    MultipleTransports,
+
 }
 
 impl fmt::Display for OptionsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidQueryType(qt)   => write!(f, "Invalid query type {:?}", qt),
-            Self::MultipleTransports     => write!(f, "Only one transport type can be specified"),
+
         }
     }
 }
@@ -583,8 +547,10 @@ mod test {
 
     #[test]
     fn an_unrelated_argument() {
-        assert_eq!(Options::getopts(&[ "--time" ]),
-                   OptionsResult::Help(HelpReason::NoDomains, UseColours::Automatic));
+        match Options::getopts(&[ "--time" ]) {
+            OptionsResult::InvalidOptionsFormat(_) => (),
+            _ => panic!("Expected InvalidOptionsFormat for unknown option"),
+        }
     }
 
     // query tests

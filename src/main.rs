@@ -136,12 +136,12 @@ fn version_bland() -> &'static str {
 /// # Returns
 ///
 /// * The process exit code.
-async fn run(Options { requests, format, measure_time, verbose }: Options) -> i32 {
+async fn run(Options { requests, format, verbose }: Options) -> i32 {
     use std::time::Instant;
     use std::net::{IpAddr, SocketAddr};
 
     let mut responses = Vec::new();
-    let timer = if measure_time || verbose { Some(Instant::now()) } else { None };
+    let timer = if verbose { Some(Instant::now()) } else { None };
 
     let mut errored = false;
 

@@ -102,8 +102,7 @@ OUTPUT OPTIONS
 `--seconds`
 : Do not format durations as hours and minutes; instead, display them as seconds.
 
-`--time`
-: Print how long the response took to arrive.
+
 
 
 META OPTIONS
