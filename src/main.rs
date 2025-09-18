@@ -27,6 +27,12 @@ use hickory_resolver::config::{ResolverConfig, ResolverOpts, NameServerConfig, P
 use hickory_resolver::error::ResolveErrorKind;
 
 use std::collections::HashSet;
+use std::fs;
+#[allow(unused_imports)]
+use std::net::{IpAddr, SocketAddr};
+
+// Windows-specific import for retrieving system DNS servers via ipconfig
+#[cfg(windows)] use ipconfig;
 
 mod colours;
 mod hints;
@@ -159,11 +165,56 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
         }
     }
 
+    // Load DNS resolver configuration: use system defaults if no custom nameservers provided
     let config = if requests.inputs.nameservers.is_empty() {
         match requests.inputs.transport_type {
             Some(TransportType::TLS) => ResolverConfig::cloudflare_tls(),
             Some(TransportType::HTTPS) => ResolverConfig::google_https(),
-            _ => ResolverConfig::default(),
+            _ => {
+                // Cross-platform loading of system DNS servers for UDP/TCP transport
+                let nameservers: Vec<IpAddr> = if cfg!(target_os = "windows") {
+                    #[cfg(windows)]
+                    {
+                        // On Windows, use ipconfig to retrieve DNS servers from network adapters
+                        ipconfig::get_adapters()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .flat_map(|adapter| adapter.dns_servers)
+                            .collect()
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        vec![]
+                    }
+                } else {
+                    // On Unix/Linux, parse /etc/resolv.conf for DNS server entries
+                    match fs::read_to_string("/etc/resolv.conf") {
+                        Ok(content) => {
+                            content.lines()
+                                .filter_map(|line| {
+                                    let line = line.trim();
+                                    line.strip_prefix("nameserver ")?
+                                        .trim()
+                                        .parse::<IpAddr>()
+                                        .ok()
+                                })
+                                .collect()
+                        }
+                        Err(_) => vec![],
+                    }
+                };
+                let mut config = ResolverConfig::new();
+                for ns in nameservers {
+                    let socket_addr = SocketAddr::new(ns, 53);
+                    let ns_config = NameServerConfig::new(socket_addr, Protocol::Udp);
+                    config.add_name_server(ns_config);
+                }
+                if config.name_servers().is_empty() {
+                    ResolverConfig::google()
+                } else {
+                    config
+                }
+            }
         }
     } else {
         let mut config = ResolverConfig::new();
