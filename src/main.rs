@@ -318,7 +318,8 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
     else {
         let duration = timer.map(|t| t.elapsed());
         if let Some(duration) = duration {
-            println!("Ran in {}ms", duration.as_millis());
+            let duration_ms = duration.as_secs_f64() * 1000.0;
+            println!("Ran in {:.2}ms", duration_ms);
         }
 
         if errored {
