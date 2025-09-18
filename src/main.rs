@@ -26,6 +26,8 @@ use hickory_resolver::TokioAsyncResolver;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts, NameServerConfig, Protocol};
 use hickory_resolver::error::ResolveErrorKind;
 
+use std::collections::HashSet;
+
 mod colours;
 mod hints;
 mod logger;
@@ -260,7 +262,9 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
     // Process results in order
     for (domain, qtype, result, elapsed) in sorted_results {
         if verbose {
-            let nameservers: Vec<String> = config.name_servers().iter().map(|ns| ns.socket_addr.to_string()).collect();
+            let nameservers_set: HashSet<String> = config.name_servers().iter().map(|ns| ns.socket_addr.to_string()).collect();
+            let mut nameservers: Vec<String> = nameservers_set.into_iter().collect();
+            nameservers.sort();
             let nameserver_str = nameservers.join(", ");
             let transport = requests.inputs.transport_type.map_or("UDP", |t| match t {
                 TransportType::UDP => "UDP",
