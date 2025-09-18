@@ -144,11 +144,17 @@ impl Options {
             OptionsResult::ListTypes
         }
         else {
-            let transport_type = match TransportType::from_args(matches.free.iter()) {
-                Ok(tt) => tt,
-                Err(e) => return OptionsResult::InvalidOptions(e),
+            let transport_type = if matches.opt_present("udp") {
+                Some(TransportType::UDP)
+            } else if matches.opt_present("tcp") {
+                Some(TransportType::TCP)
+            } else if matches.opt_present("tls") {
+                Some(TransportType::TLS)
+            } else if matches.opt_present("https") {
+                Some(TransportType::HTTPS)
+            } else {
+                None
             };
-
             match Self::deduce(matches, transport_type) {
                 Ok(opts) => {
                     if opts.requests.inputs.domains.is_empty() {

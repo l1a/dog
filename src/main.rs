@@ -160,7 +160,11 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
     }
 
     let config = if requests.inputs.nameservers.is_empty() {
-        ResolverConfig::default()
+        match requests.inputs.transport_type {
+            Some(TransportType::TLS) => ResolverConfig::cloudflare_tls(),
+            Some(TransportType::HTTPS) => ResolverConfig::google_https(),
+            _ => ResolverConfig::default(),
+        }
     } else {
         let mut config = ResolverConfig::new();
         for ns_str in &requests.inputs.nameservers {
@@ -200,12 +204,12 @@ async fn run(Options { requests, format, measure_time, verbose }: Options) -> i3
 
             let ip_addr: IpAddr = if let Ok(ip) = ns_str.parse::<IpAddr>() {
                 if protocol == Protocol::Tls || protocol == Protocol::Https {
-                    tls_dns_name = Some(ns_str.clone());
+                    tls_dns_name = if ns_str == "8.8.8.8" || ns_str == "8.8.4.4" || ns_str == "2001:4860:4860::8888" || ns_str == "2001:4860:4860::8844" { Some("dns.google".to_string()) } else if ns_str == "1.1.1.1" || ns_str == "1.0.0.1" || ns_str == "2606:4700:4700::1111" || ns_str == "2606:4700:4700::1001" { Some("cloudflare-dns.com".to_string()) } else { Some(ns_str.clone()) };
                 }
                 ip
             } else {
                 if protocol == Protocol::Tls || protocol == Protocol::Https {
-                    tls_dns_name = Some(ns_str.clone());
+                    tls_dns_name = if ns_str == "8.8.8.8" || ns_str == "8.8.4.4" || ns_str == "2001:4860:4860::8888" || ns_str == "2001:4860:4860::8844" { Some("dns.google".to_string()) } else if ns_str == "1.1.1.1" || ns_str == "1.0.0.1" || ns_str == "2606:4700:4700::1111" || ns_str == "2606:4700:4700::1001" { Some("cloudflare-dns.com".to_string()) } else { Some(ns_str.clone()) };
                 }
 
                 let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
