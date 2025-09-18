@@ -23,6 +23,9 @@ doctest = false
 # make dev builds faster by excluding debug symbols
 [profile.dev]
 debug = false
+incremental = true
+codegen-units = 16
+opt-level = 0
 
 # use LTO for smaller binaries (that take longer to build)
 [profile.release]
