@@ -18,6 +18,10 @@ export DOG_DEBUG := ""
     cargo build --release --verbose
     strip "${CARGO_TARGET_DIR:-target}/release/dog"
 
+# install the dog binary locally (release version)
+@install-release:
+    cargo install --path .
+
 # produce an HTML chart of compilation timings
 @build-time:
     cargo +nightly clean
