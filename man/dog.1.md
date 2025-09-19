@@ -1,4 +1,4 @@
-% dog(1) v0.4.0-pre
+% dog(1) 0.4.1-pre
 
 <!-- This is the dog(1) man page, written in Markdown. -->
 <!-- To generate the roff version, run `just man`, -->

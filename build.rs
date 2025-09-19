@@ -114,40 +114,15 @@ fn cargo_version() -> String {
 }
 
 /// Returns the version and build parameters string.
+/// Previously appended feature indicators (-idna, -https), but these were removed
+/// as they did not correspond to any actual Cargo features or gated code.
 fn version_string() -> String {
-    let mut ver = cargo_version();
-
-    let feats = nonstandard_features_string();
-    if ! feats.is_empty() {
-        ver.push_str(&format!(" [{}]", &feats));
-    }
-
-    ver
+    cargo_version()
 }
 
-/// Finds whether a feature is enabled by examining the Cargo variable.
-fn feature_enabled(name: &str) -> bool {
-    env::var(format!("CARGO_FEATURE_{}", name))
-        .map(|e| ! e.is_empty())
-        .unwrap_or(false)
-}
-
-/// A comma-separated list of non-standard feature choices.
-fn nonstandard_features_string() -> String {
-    let mut s = Vec::new();
-
-    if ! feature_enabled("WITH_IDNA") {
-        s.push("-idna");
-    }
 
 
 
-    if ! feature_enabled("WITH_HTTPS") {
-        s.push("-https");
-    }
-
-    s.join(", ")
-}
 
 
 /// Formats the current date as an ISO 8601 string.
