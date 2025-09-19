@@ -1,5 +1,3 @@
-dog ○ command-line DNS client
-
 Usage:
   dog [options] [--] <arguments>
 
