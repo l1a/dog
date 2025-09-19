@@ -52,28 +52,10 @@ export DOG_DEBUG := ""
 @test-quick:
     cargo test --workspace --no-default-features -- --quiet
 
-# run mutation tests
-@test-mutation:
-    cargo +nightly test    --package dns --features=dns/with_mutagen -- --quiet
-    cargo +nightly mutagen --package dns --features=dns/with_mutagen
 
 
-#---------#
-# fuzzing #
-#---------#
 
-# run fuzzing on the dns crate
-@fuzz:
-    cargo +nightly fuzz --version
-    cd dns; cargo +nightly fuzz run fuzz_parsing -- -jobs=`nproc` -workers=`nproc` -runs=69105
 
-# print out the data that caused crashes during fuzzing as hexadecimal
-@fuzz-hex:
-    for crash in dns/fuzz/artifacts/fuzz_parsing/crash-*; do echo; echo $crash; hexyl $crash; done
-
-# remove fuzz log files
-@fuzz-clean:
-    rm dns/fuzz/fuzz-*.log
 
 
 #-----------------------#
