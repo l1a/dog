@@ -222,17 +222,17 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
             if let Some(transport) = requests.inputs.transport_type {
                 match (ns_str.as_str(), transport) {
                     ("google", TransportType::HTTPS) => {
-                        config = ResolverConfig::google_https();
-                        continue;
-                    }
+                    config = ResolverConfig::google_https();
+                    continue;
+                }
                     ("cloudflare", TransportType::HTTPS) => {
-                        config = ResolverConfig::cloudflare_https();
-                        continue;
-                    }
+                    config = ResolverConfig::cloudflare_https();
+                    continue;
+                }
                     ("cloudflare" | "one.one.one.one", TransportType::TLS) => {
-                        config = ResolverConfig::cloudflare_tls();
-                        continue;
-                    }
+                    config = ResolverConfig::cloudflare_tls();
+                    continue;
+                }
                     _ => {}
                 }
             }

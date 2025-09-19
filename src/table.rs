@@ -51,7 +51,7 @@ impl Table {
         if let Some(data) = record.data() {
             let qtype = self.coloured_record_type(&record);
             let qname = record.name().to_string();
-            let summary = self.text_format.record_payload_summary(data);
+            let summary = self.text_format.record_payload_summary(&data);
             let ttl = Some(self.text_format.format_duration(record.ttl()));
             self.rows.push(Row { qtype, qname, ttl, summary, section });
         }
