@@ -104,6 +104,9 @@ export DOG_DEBUG := ""
 # build and preview the man page
 @man-preview: man
     man "${CARGO_TARGET_DIR:-target}/man/dog.1"
+@man-local: man
+    mkdir -p ~/.local/man/man1
+    cp "${CARGO_TARGET_DIR:-target}/man/dog.1" ~/.local/man/man1/
 
 
 #-----------#
