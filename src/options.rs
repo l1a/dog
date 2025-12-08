@@ -700,4 +700,22 @@ mod test {
         assert_eq!(Options::getopts(&[ "lookup.dog", "--type", "999999" ]),
                    OptionsResult::InvalidOptions(OptionsError::InvalidQueryType("999999".into())));
     }
+
+    // reverse lookup tests
+
+    /// Verifies that IPv4 addresses are correctly converted to in-addr.arpa domains
+    #[test]
+    fn reverse_lookup_ipv4() {
+        let ip: IpAddr = "8.8.4.4".parse().unwrap();
+        assert_eq!(reverse_lookup_domain(ip), "4.4.8.8.in-addr.arpa");
+    }
+
+    /// Verifies that IPv6 addresses are correctly converted to ip6.arpa domains
+    #[test]
+    fn reverse_lookup_ipv6() {
+        let ip: IpAddr = "2001:4860:4860::8888".parse().unwrap();
+        // 2001:4860:4860:0000:0000:0000:0000:8888
+        // reverse nibbles...
+        assert_eq!(reverse_lookup_domain(ip), "8.8.8.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.8.4.0.6.8.4.1.0.0.2.ip6.arpa");
+    }
 }
