@@ -179,7 +179,7 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
                         ipconfig::get_adapters()
                             .unwrap_or_default()
                             .into_iter()
-                            .flat_map(|adapter| adapter.dns_servers)
+                            .flat_map(|adapter| adapter.dns_servers().to_vec())
                             .collect()
                     }
                     #[cfg(not(windows))]
