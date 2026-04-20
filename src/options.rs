@@ -30,6 +30,9 @@ pub struct Options {
 pub struct Requests {
     /// The inputs to generate requests from.
     pub inputs: Inputs,
+
+    /// Whether to request DNSSEC validation.
+    pub dnssec: bool,
 }
 
 /// The transport protocol to use for DNS queries.
@@ -151,9 +154,18 @@ impl Options {
 impl Requests {
     /// Deduce the requests from the command-line matches.
     fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
+        let mut dnssec = false;
+        for tweak in matches.opt_strs("Z") {
+            if tweak.eq_ignore_ascii_case("do") || tweak.eq_ignore_ascii_case("dnssec-ok") {
+                dnssec = true;
+            } else {
+                return Err(OptionsError::InvalidTweak(tweak));
+            }
+        }
+
         let inputs = Inputs::deduce(matches, transport_type)?;
 
-        Ok(Self { inputs })
+        Ok(Self { inputs, dnssec })
     }
 }
 
@@ -415,14 +427,15 @@ pub enum HelpReason {
 pub enum OptionsError {
     /// The query type is invalid.
     InvalidQueryType(String),
-
+    /// The protocol tweak is invalid.
+    InvalidTweak(String),
 }
 
 impl fmt::Display for OptionsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidQueryType(qt)   => write!(f, "Invalid query type {:?}", qt),
-
+            Self::InvalidTweak(tw)       => write!(f, "Invalid protocol tweak {:?}", tw),
         }
     }
 }
@@ -699,6 +712,26 @@ mod test {
     fn invalid_named_type_too_big() {
         assert_eq!(Options::getopts(&[ "lookup.dog", "--type", "999999" ]),
                    OptionsResult::InvalidOptions(OptionsError::InvalidQueryType("999999".into())));
+    }
+
+    #[test]
+    fn invalid_tweak() {
+        assert_eq!(Options::getopts(&[ "lookup.dog", "-Z", "unknown" ]),
+                   OptionsResult::InvalidOptions(OptionsError::InvalidTweak("unknown".into())));
+    }
+
+    // dnssec tests
+
+    #[test]
+    fn dnssec_ok() {
+        let options = Options::getopts(&[ "dom.ain", "-Z", "do" ]).unwrap();
+        assert_eq!(options.requests.dnssec, true);
+    }
+
+    #[test]
+    fn dnssec_ok_alias() {
+        let options = Options::getopts(&[ "dom.ain", "-Z", "dnssec-ok" ]).unwrap();
+        assert_eq!(options.requests.dnssec, true);
     }
 
     // reverse lookup tests

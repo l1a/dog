@@ -290,7 +290,12 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
         config
     };
 
-    let resolver = TokioAsyncResolver::tokio(config.clone(), ResolverOpts::default());
+    let mut resolver_opts = ResolverOpts::default();
+    if requests.dnssec {
+        resolver_opts.validate = true;
+        resolver_opts.edns0 = true;
+    }
+    let resolver = TokioAsyncResolver::tokio(config.clone(), resolver_opts);
 
     // Collect all lookup futures for parallel execution
     let mut futures = Vec::new();
