@@ -101,7 +101,6 @@ impl Table {
         match record.record_type() {
             RecordType::A     => self.colours.a.paint("A"),
             RecordType::AAAA  => self.colours.aaaa.paint("AAAA"),
-            RecordType::CAA   => self.colours.caa.paint("CAA"),
             RecordType::CNAME => self.colours.cname.paint("CNAME"),
             RecordType::MX    => self.colours.mx.paint("MX"),
             RecordType::NS    => self.colours.ns.paint("NS"),
@@ -109,6 +108,22 @@ impl Table {
             RecordType::SOA   => self.colours.soa.paint("SOA"),
             RecordType::SRV   => self.colours.srv.paint("SRV"),
             RecordType::TXT   => self.colours.txt.paint("TXT"),
+            RecordType::CAA
+            | RecordType::CDS
+            | RecordType::CDNSKEY
+            | RecordType::CSYNC
+            | RecordType::DNSKEY
+            | RecordType::DS
+            | RecordType::KEY
+            | RecordType::NSEC
+            | RecordType::NSEC3
+            | RecordType::NSEC3PARAM
+            | RecordType::OPENPGPKEY
+            | RecordType::RRSIG
+            | RecordType::SIG
+            | RecordType::SSHFP
+            | RecordType::TLSA
+            | RecordType::TSIG => self.colours.security.paint(record.record_type().to_string()),
             _                 => self.colours.default.paint(record.record_type().to_string()),
         }
     }

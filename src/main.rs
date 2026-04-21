@@ -30,6 +30,8 @@ use std::collections::HashSet;
 use std::fs;
 #[allow(unused_imports)]
 use std::net::{IpAddr, SocketAddr};
+use hickory_resolver::proto::rr::RecordType;
+use crate::options::ANY_FALLBACK_TYPES;
 
 // Windows-specific import for retrieving system DNS servers via ipconfig
 #[cfg(windows)] use ipconfig;
@@ -303,11 +305,40 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
         for qtype in requests.inputs.record_types.iter().copied() {
             let resolver_clone = resolver.clone();
             let domain_str = domain.clone();
-            let query_timer = Instant::now();
             futures.push(async move {
-                let elapsed = query_timer.elapsed();
-                let result = resolver_clone.lookup(&domain_str, qtype).await;
-                (domain_str, qtype, result, elapsed)
+                if qtype == RecordType::ANY {
+                    let query_timer = Instant::now();
+                    let result = resolver_clone.lookup(&domain_str, qtype).await;
+                    let elapsed = query_timer.elapsed();
+
+                    let is_empty = match &result {
+                        Ok(lookup) => lookup.iter().next().is_none(),
+                        Err(_) => true,
+                    };
+
+                    if is_empty {
+                        // Fallback!
+                        let mut fallback_futures = Vec::new();
+                        for f_qtype in ANY_FALLBACK_TYPES.iter().copied() {
+                            let f_res_clone = resolver_clone.clone();
+                            let f_domain_str = domain_str.clone();
+                            fallback_futures.push(async move {
+                                let f_timer = Instant::now();
+                                let f_result = f_res_clone.lookup(&f_domain_str, f_qtype).await;
+                                let f_elapsed = f_timer.elapsed();
+                                (f_domain_str, f_qtype, f_result, f_elapsed)
+                            });
+                        }
+                        return join_all(fallback_futures).await;
+                    } else {
+                        return vec![(domain_str, qtype, result, elapsed)];
+                    }
+                } else {
+                    let query_timer = Instant::now();
+                    let result = resolver_clone.lookup(&domain_str, qtype).await;
+                    let elapsed = query_timer.elapsed();
+                    return vec![(domain_str, qtype, result, elapsed)];
+                }
             });
         }
     }
@@ -316,7 +347,7 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
     let query_results = join_all(futures).await;
 
     // Sort results by domain, then qtype to maintain output order and blocks
-    let mut sorted_results = query_results;
+    let mut sorted_results: Vec<_> = query_results.into_iter().flatten().collect();
     sorted_results.sort_by_key(|(domain, qtype, _, _)| (domain.clone(), *qtype));
 
     // Process results in order

@@ -7,7 +7,7 @@ __dog() {
         "(- 1 *)"{-l,--list}"[List known DNS record types]" \
         "(- 1 *)"{-v,--verbose}"[Print verbose information]" \
         {-q,--query}"[Host name or domain name to query]::_hosts" \
-        {-t,--type}"[Type of the DNS record being queried]:(record type):(A AAAA CAA CNAME HINFO MX NS PTR SOA SRV TXT)" \
+        {-t,--type}"[Type of the DNS record being queried]:(record type):(A AAAA ANAME ANY AXFR CAA CDNSKEY CDS CNAME CSYNC DNSKEY DS HINFO HTTPS IXFR KEY MX NAPTR NS NSEC NSEC3 NSEC3PARAM NULL OPENPGPKEY OPT PTR RRSIG SIG SOA SRV SSHFP SVCB TLSA TSIG TXT)" \
         {-n,--nameserver}"[Address of the nameserver to send packets to]::_hosts;" \
         --class"[Network class of the DNS record being queried]:(network class):(IN CH HS)" \
         --edns"[Whether to OPT in to EDNS]:(edns setting):(disable hide show)" \

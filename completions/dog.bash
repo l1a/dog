@@ -9,7 +9,7 @@ _dog()
             ;;
 
         -t|--type)
-            COMPREPLY=( $( compgen -W 'A AAAA CAA CNAME HINFO MX NS PTR SOA SRV TXT' -- "$cur" ) )
+            COMPREPLY=( $( compgen -W 'A AAAA ANAME ANY AXFR CAA CDNSKEY CDS CNAME CSYNC DNSKEY DS HINFO HTTPS IXFR KEY MX NAPTR NS NSEC NSEC3 NSEC3PARAM NULL OPENPGPKEY OPT PTR RRSIG SIG SOA SRV SSHFP SVCB TLSA TSIG TXT' -- "$cur" ) )
             return
             ;;
 
@@ -41,7 +41,7 @@ _dog()
             ;;
 
         *)
-            COMPREPLY=( $( compgen -W 'A AAAA CAA CNAME HINFO MX NS PTR SOA SRV TXT' -- "$cur" ) )
+            COMPREPLY=( $( compgen -W 'A AAAA ANAME ANY AXFR CAA CDNSKEY CDS CNAME CSYNC DNSKEY DS HINFO HTTPS IXFR KEY MX NAPTR NS NSEC NSEC3 NSEC3PARAM NULL OPENPGPKEY OPT PTR RRSIG SIG SOA SRV SSHFP SVCB TLSA TSIG TXT' -- "$cur" ) )
             ;;
     esac
 } &&

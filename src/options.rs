@@ -210,7 +210,7 @@ impl Inputs {
 
         for record_name in matches.opt_strs("type") {
             if record_name.eq_ignore_ascii_case("ANY") {
-                self.add_any_record_types();
+                self.add_type(RecordType::ANY);
             }
             else if let Ok(record_type) = record_name.to_uppercase().parse() {
                 self.add_type(record_type);
@@ -235,7 +235,7 @@ impl Inputs {
             }
             else if is_constant_name(&argument) {
                 if argument.eq_ignore_ascii_case("ANY") {
-                    self.add_any_record_types();
+                    self.add_type(RecordType::ANY);
                 }
                 else if let Ok(record_type) = argument.to_uppercase().parse() {
                     trace!("Got qtype -> {:?}", &argument);
@@ -277,6 +277,9 @@ impl Inputs {
 
     /// Add a record type to the list of record types to query.
     fn add_type(&mut self, rt: RecordType) {
+        if rt == RecordType::ANY {
+            self.any_query = true;
+        }
         self.record_types.push(rt);
     }
 
@@ -285,27 +288,40 @@ impl Inputs {
         self.nameservers.push(input.to_string());
     }
 
-    /// Add a list of common record types to the list of record types to query.
-    fn add_any_record_types(&mut self) {
-        self.any_query = true;
-        self.record_types.extend_from_slice(&[
-            RecordType::A,
-            RecordType::AAAA,
-            RecordType::CAA,
-            RecordType::CNAME,
-            RecordType::DNSKEY,
-            RecordType::DS,
-            RecordType::MX,
-            RecordType::NS,
-            RecordType::SOA,
-            RecordType::SRV,
-            RecordType::SSHFP,
-            RecordType::TLSA,
-            RecordType::TXT,
-            RecordType::RRSIG,
-        ]);
-    }
 }
+
+/// The list of record types to query when falling back from an ANY query.
+pub const ANY_FALLBACK_TYPES: &[RecordType] = &[
+    RecordType::A,
+    RecordType::AAAA,
+    RecordType::ANAME,
+    RecordType::CAA,
+    RecordType::CDNSKEY,
+    RecordType::CDS,
+    RecordType::CNAME,
+    RecordType::CSYNC,
+    RecordType::DNSKEY,
+    RecordType::DS,
+    RecordType::HINFO,
+    RecordType::HTTPS,
+    RecordType::KEY,
+    RecordType::MX,
+    RecordType::NAPTR,
+    RecordType::NS,
+    RecordType::NSEC,
+    RecordType::NSEC3,
+    RecordType::NSEC3PARAM,
+    RecordType::OPENPGPKEY,
+    RecordType::PTR,
+    RecordType::RRSIG,
+    RecordType::SIG,
+    RecordType::SOA,
+    RecordType::SRV,
+    RecordType::SSHFP,
+    RecordType::SVCB,
+    RecordType::TLSA,
+    RecordType::TXT,
+];
 
 /// Returns `true` if the argument is a constant-like name.
 fn is_constant_name(argument: &str) -> bool {
@@ -483,6 +499,11 @@ pub fn all_record_types() -> Vec<RecordTypeInfo> {
         RecordTypeInfo { record_type: RecordType::NSEC3, description: "Next Secure record version 3", example: "dog example.com NSEC3" },
         RecordTypeInfo { record_type: RecordType::NSEC3PARAM, description: "NSEC3 parameters", example: "dog example.com NSEC3PARAM" },
         RecordTypeInfo { record_type: RecordType::TSIG, description: "Transaction Signature", example: "dog example.com TSIG" },
+        RecordTypeInfo { record_type: RecordType::CDS, description: "Child DS", example: "dog example.com CDS" },
+        RecordTypeInfo { record_type: RecordType::CDNSKEY, description: "Child DNSKEY", example: "dog example.com CDNSKEY" },
+        RecordTypeInfo { record_type: RecordType::CSYNC, description: "Child-To-Parent Synchronization", example: "dog example.com CSYNC" },
+        RecordTypeInfo { record_type: RecordType::KEY, description: "Security Key", example: "dog example.com KEY" },
+        RecordTypeInfo { record_type: RecordType::SIG, description: "Security Signature", example: "dog example.com SIG" },
     ]
 }
 
@@ -750,5 +771,21 @@ mod test {
         // 2001:4860:4860:0000:0000:0000:0000:8888
         // reverse nibbles...
         assert_eq!(reverse_lookup_domain(ip), "8.8.8.8.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.8.4.0.6.8.4.1.0.0.2.ip6.arpa");
+    }
+
+    #[test]
+    fn extended_record_types() {
+        let options = Options::getopts(&[ "lookup.dog", "CDS", "CDNSKEY", "CSYNC", "KEY", "SIG" ]).unwrap();
+        assert_eq!(options.requests.inputs, Inputs {
+            domains:      vec![ "lookup.dog".to_string() ],
+            record_types: vec![
+                RecordType::CDS,
+                RecordType::CDNSKEY,
+                RecordType::CSYNC,
+                RecordType::KEY,
+                RecordType::SIG,
+            ],
+            .. Inputs::fallbacks()
+        });
     }
 }

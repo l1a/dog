@@ -30,7 +30,7 @@ Register-ArgumentCompleter -Native -CommandName 'dog' -ScriptBlock {
         $previousArg = ''
     }
 
-    [string[]]$dnsTypeValues = @('A', 'AAAA', 'CAA', 'CNAME', 'HINFO', 'MX', 'NS', 'PTR', 'SOA', 'SRV', 'TXT')
+    [string[]]$dnsTypeValues = @('A', 'AAAA', 'ANAME', 'ANY', 'AXFR', 'CAA', 'CDNSKEY', 'CDS', 'CNAME', 'CSYNC', 'DNSKEY', 'DS', 'HINFO', 'HTTPS', 'IXFR', 'KEY', 'MX', 'NAPTR', 'NS', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'NULL', 'OPENPGPKEY', 'OPT', 'PTR', 'RRSIG', 'SIG', 'SOA', 'SRV', 'SSHFP', 'SVCB', 'TLSA', 'TSIG', 'TXT')
 
     [string[]]$completions = @()
     [bool]$isOptionValue = $argsString.EndsWith('=')

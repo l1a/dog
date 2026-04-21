@@ -5,9 +5,9 @@ complete -c dog -s 'l' -l 'list'     -d "List known DNS record types"
 complete -c dog -s 'v' -l 'verbose'  -d "Print verbose information"
 
 # Query options
-complete -c dog -x -a "(__fish_print_hostnames) A AAAA CAA CNAME HINFO MX NS PTR SOA SRV TXT IN CH HS"
+complete -c dog -x -a "(__fish_print_hostnames) A AAAA ANAME ANY AXFR CAA CDNSKEY CDS CNAME CSYNC DNSKEY DS HINFO HTTPS IXFR KEY MX NAPTR NS NSEC NSEC3 NSEC3PARAM NULL OPENPGPKEY OPT PTR RRSIG SIG SOA SRV SSHFP SVCB TLSA TSIG TXT IN CH HS"
 complete -c dog -s 'q' -l 'query'      -d "Host name or domain name to query" -x -a "(__fish_print_hostnames)"
-complete -c dog -s 't' -l 'type'       -d "Type of the DNS record being queried" -x -a "A AAAA CAA CNAME HINFO MX NS PTR SOA SRV TXT"
+complete -c dog -s 't' -l 'type'       -d "Type of the DNS record being queried" -x -a "A AAAA ANAME ANY AXFR CAA CDNSKEY CDS CNAME CSYNC DNSKEY DS HINFO HTTPS IXFR KEY MX NAPTR NS NSEC NSEC3 NSEC3PARAM NULL OPENPGPKEY OPT PTR RRSIG SIG SOA SRV SSHFP SVCB TLSA TSIG TXT"
 complete -c dog -s 'n' -l 'nameserver' -d "Address of the nameserver to send packets to" -x -a "(__fish_print_hostnames)"
 complete -c dog        -l 'class'      -d "Network class of the DNS record being queried" -x -a "IN CH HS"
 

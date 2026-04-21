@@ -17,8 +17,7 @@ pub struct Colours {
     pub a: Style,
     /// The style for AAAA records.
     pub aaaa: Style,
-    /// The style for CAA records.
-    pub caa: Style,
+
     /// The style for CNAME records.
     pub cname: Style,
     /// The style for MX records.
@@ -33,6 +32,8 @@ pub struct Colours {
     pub srv: Style,
     /// The style for TXT records.
     pub txt: Style,
+    /// The style for security and cryptography record types.
+    pub security: Style,
     /// The style for unknown record types.
     pub default: Style,
 }
@@ -47,7 +48,7 @@ impl Colours {
             answer: Style::default(),
             a: Green.bold(),
             aaaa: Green.bold(),
-            caa: Red.normal(),
+
             cname: Yellow.normal(),
             mx: Cyan.normal(),
             ns: Red.normal(),
@@ -55,6 +56,7 @@ impl Colours {
             soa: Purple.normal(),
             srv: Cyan.normal(),
             txt: Yellow.normal(),
+            security: Yellow.normal(),
             default: White.on(Red),
         }
     }

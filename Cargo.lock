@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "dog"
-version = "0.4.1-pre"
+version = "0.4.1"
 dependencies = [
  "ansi_term",
  "atty",

@@ -121,7 +121,7 @@ META OPTIONS
 RECORD TYPES
 ============
 
-dog supports the following record types: `A`, `AAAA`, `ANAME`, `ANY`, `AXFR`, `CAA`, `CNAME`, `DNSKEY`, `DS`, `HINFO`, `HTTPS`, `IXFR`, `MX`, `NAPTR`, `NS`, `NULL`, `OPENPGPKEY`, `OPT`, `PTR`, `SOA`, `SRV`, `SSHFP`, `SVCB`, `TLSA`, `TXT`, `RRSIG`, `NSEC`, `NSEC3`, `NSEC3PARAM`, `TSIG`.
+dog supports the following record types: `A`, `AAAA`, `ANAME`, `ANY`, `AXFR`, `CAA`, `CDNSKEY`, `CDS`, `CNAME`, `CSYNC`, `DNSKEY`, `DS`, `HINFO`, `HTTPS`, `IXFR`, `KEY`, `MX`, `NAPTR`, `NS`, `NSEC`, `NSEC3`, `NSEC3PARAM`, `NULL`, `OPENPGPKEY`, `OPT`, `PTR`, `RRSIG`, `SIG`, `SOA`, `SRV`, `SSHFP`, `SVCB`, `TLSA`, `TSIG`, `TXT`.
 
 
 ENVIRONMENT VARIABLES
