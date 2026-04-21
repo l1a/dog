@@ -305,32 +305,19 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
             let domain_str = domain.clone();
             futures.push(async move {
                 if qtype == RecordType::ANY {
-                    let query_timer = Instant::now();
-                    let result = resolver_clone.lookup(&domain_str, qtype).await;
-                    let elapsed = query_timer.elapsed();
-
-                    let is_empty = match &result {
-                        Ok(lookup) => lookup.iter().next().is_none(),
-                        Err(_) => true,
-                    };
-
-                    if is_empty {
-                        // Fallback!
-                        let mut fallback_futures = Vec::new();
-                        for f_qtype in ANY_FALLBACK_TYPES.iter().copied() {
-                            let f_res_clone = resolver_clone.clone();
-                            let f_domain_str = domain_str.clone();
-                            fallback_futures.push(async move {
-                                let f_timer = Instant::now();
-                                let f_result = f_res_clone.lookup(&f_domain_str, f_qtype).await;
-                                let f_elapsed = f_timer.elapsed();
-                                (f_domain_str, f_qtype, f_result, f_elapsed)
-                            });
-                        }
-                        join_all(fallback_futures).await
-                    } else {
-                        vec![(domain_str, qtype, result, elapsed)]
+                    // Perform an exhaustive sweep of all record types
+                    let mut fallback_futures = Vec::new();
+                    for f_qtype in ANY_FALLBACK_TYPES.iter().copied() {
+                        let f_res_clone = resolver_clone.clone();
+                        let f_domain_str = domain_str.clone();
+                        fallback_futures.push(async move {
+                            let f_timer = Instant::now();
+                            let f_result = f_res_clone.lookup(&f_domain_str, f_qtype).await;
+                            let f_elapsed = f_timer.elapsed();
+                            (f_domain_str, f_qtype, f_result, f_elapsed)
+                        });
                     }
+                    join_all(fallback_futures).await
                 } else {
                     let query_timer = Instant::now();
                     let result = resolver_clone.lookup(&domain_str, qtype).await;
