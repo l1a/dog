@@ -41,15 +41,15 @@ export DOG_DEBUG := ""
 #---------------#
 
 # run unit tests
-@test:
+@test: clippy
     cargo test --workspace -- --quiet
 
 # run unit tests (in release mode)
-@test-release:
+@test-release: clippy
     cargo test --workspace --release --verbose
 
 # run unit tests (without some features)
-@test-quick:
+@test-quick: clippy
     cargo test --workspace --no-default-features -- --quiet
 
 
@@ -64,8 +64,7 @@ export DOG_DEBUG := ""
 
 # lint the code
 @clippy:
-    touch dns/src/lib.rs
-    cargo clippy
+    cargo clippy -- -D warnings
 
 # generate a code coverage report using tarpaulin via docker
 @coverage-docker:
