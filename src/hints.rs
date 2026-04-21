@@ -46,12 +46,11 @@ impl LocalHosts {
     /// standard `/etc/hosts` format, with one entry per line, separated by
     /// whitespace, where the first field is the address and the remaining
     /// fields are hostname aliases, and `#` signifies a comment.
+    #[allow(clippy::assertions_on_constants)]
     fn load_from_file(file: File) -> io::Result<Self> {
         use std::io::{BufRead, BufReader};
 
-        if cfg!(test) {
-            panic!("load_from_file() called from test code");
-        }
+        assert!(!cfg!(test), "load_from_file() called from test code");
 
         let reader = BufReader::new(file);
 

@@ -79,8 +79,8 @@ impl OutputFormat {
     /// otherwise.
     pub fn print(self, responses: Vec<Lookup>, duration: Option<Duration>) -> bool {
         match self {
-            Self::Short(tf) => {
-                let all_answers = responses.into_iter().flat_map(|r| r.into_iter()).collect::<Vec<_>>();
+            Self::Short(_) => {
+                let all_answers = responses.into_iter().flat_map(std::iter::IntoIterator::into_iter).collect::<Vec<_>>();
 
                 if all_answers.is_empty() {
                     eprintln!("No results");
@@ -88,7 +88,7 @@ impl OutputFormat {
                 }
 
                 for answer in all_answers {
-                    println!("{}", tf.record_payload_summary(&answer));
+                    println!("{}", TextFormat::record_payload_summary(&answer));
                 }
             }
             Self::JSON => {
@@ -96,7 +96,7 @@ impl OutputFormat {
 
                 for response in responses {
                     let json = object! {
-                        "answers": response.record_iter().map(|r| r.to_string()).collect::<Vec<_>>(),
+                        "answers": response.record_iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
                     };
 
                     rs.push(json);
@@ -111,14 +111,14 @@ impl OutputFormat {
                         },
                     };
 
-                    println!("{}", object);
+                    println!("{object}");
                 }
                 else {
                     let object = object! {
                         "responses": rs,
                     };
 
-                    println!("{}", object);
+                    println!("{object}");
                 }
             }
             Self::Text(uc, tf) => {
@@ -129,7 +129,7 @@ impl OutputFormat {
                     for response in responses {
                         let mut table = Table::new(uc.palette(), tf);
                         for a in response.record_iter() {
-                            table.add_row(a.clone(), Section::Answer);
+                            table.add_row(a, Section::Answer);
                         }
                         write!(&mut writer, "{}", table.render()).unwrap();
                     }
@@ -138,7 +138,7 @@ impl OutputFormat {
                     for response in responses {
                         let mut table = Table::new(uc.palette(), tf);
                         for a in response.record_iter() {
-                            table.add_row(a.clone(), Section::Answer);
+                            table.add_row(a, Section::Answer);
                         }
                         print!("{}", table.render());
                     }
@@ -155,10 +155,10 @@ impl OutputFormat {
 
     /// Print an error that’s ocurred while sending or receiving DNS packets
     /// to standard error.
-    pub fn print_error(self, error: ResolveError) {
+    pub fn print_error(self, error: &ResolveError) {
         match self {
             Self::Short(..) | Self::Text(..) => {
-                eprintln!("Error: {}", error);
+                eprintln!("Error: {error}");
             }
 
             Self::JSON => {
@@ -167,7 +167,7 @@ impl OutputFormat {
                     "error_message": error.to_string(),
                 };
 
-                eprintln!("{}", object);
+                eprintln!("{object}");
             }
         }
     }
@@ -178,7 +178,7 @@ impl TextFormat {
     /// Formats a summary of a record in a received DNS response. Each record
     /// type contains wildly different data, so the format of the summary
     /// depends on what record it’s for.
-    pub fn record_payload_summary(self, record: &hickory_resolver::proto::rr::RData) -> String {
+    pub fn record_payload_summary(record: &hickory_resolver::proto::rr::RData) -> String {
         record.to_string()
     }
 
@@ -189,7 +189,7 @@ impl TextFormat {
             format_duration_hms(seconds)
         }
         else {
-            format!("{}", seconds)
+            format!("{seconds}")
         }
     }
 }
@@ -198,7 +198,7 @@ impl TextFormat {
 /// zero units.
 fn format_duration_hms(seconds: u32) -> String {
     if seconds < 60 {
-        format!("{}s", seconds)
+        format!("{seconds}s")
     }
     else if seconds < 60 * 60 {
         format!("{}m{:02}s",

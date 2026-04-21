@@ -5,6 +5,7 @@ use std::time::Duration;
 use ansi_term::ANSIString;
 
 use hickory_resolver::proto::rr::{Record, RecordType};
+use std::fmt::Write;
 
 use crate::colours::Colours;
 use crate::output::TextFormat;
@@ -47,13 +48,13 @@ impl Table {
 
     /// Adds a row to the table, containing the data in the given answer in
     /// the right section.
-    pub fn add_row(&mut self, record: Record, section: Section) {
+    pub fn add_row(&mut self, record: &Record, section: Section) {
         if let Some(data) = record.data() {
-            let qtype = self.coloured_record_type(&record);
+            let qtype = self.coloured_record_type(record);
             let qname = record.name().to_string();
-            let summary = self.text_format.record_payload_summary(&data);
+            let summary = TextFormat::record_payload_summary(data);
             let ttl = Some(self.text_format.format_duration(record.ttl()));
-            self.rows.push(Row { qtype, qname, ttl, summary, section });
+            self.rows.push(Row { qtype, qname, ttl, section, summary });
         }
     }
 
@@ -68,7 +69,7 @@ impl Table {
 
             for r in &self.rows {
                 output.push_str(&" ".repeat(qtype_len - r.qtype.len()));
-                output.push_str(&format!("{} {} ", r.qtype, self.colours.qname.paint(&r.qname)));
+                let _ = write!(output, "{} {} ", r.qtype, self.colours.qname.paint(&r.qname));
                 output.push_str(&" ".repeat(qname_len - r.qname.len()));
 
                 if let Some(ttl) = &r.ttl {
@@ -79,8 +80,7 @@ impl Table {
                     output.push_str(&" ".repeat(ttl_len));
                 }
 
-                output.push_str(&format!(" {} {}
-", self.format_section(r.section), r.summary));
+                let _ = writeln!(output, " {} {}", self.format_section(r.section), r.summary);
             }
         }
         output

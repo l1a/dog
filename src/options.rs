@@ -194,10 +194,12 @@ pub struct Inputs {
 impl Inputs {
     /// Deduce the inputs from the command-line matches.
     fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
-        let mut inputs = Self::default();
-        inputs.transport_type = transport_type;
+        let mut inputs = Self {
+            transport_type,
+            ..Self::default()
+        };
         inputs.load_named_args(&matches)?;
-        inputs.load_free_args(matches)?;
+        inputs.load_free_args(matches);
         inputs.load_fallbacks();
         Ok(inputs)
     }
@@ -228,7 +230,7 @@ impl Inputs {
     }
 
     /// Load the free arguments from the command-line matches.
-    fn load_free_args(&mut self, matches: getopts::Matches) -> Result<(), OptionsError> {
+    fn load_free_args(&mut self, matches: getopts::Matches) {
         for argument in matches.free {
             if let Some(nameserver) = argument.strip_prefix('@') {
                 self.add_nameserver(nameserver);
@@ -260,7 +262,6 @@ impl Inputs {
             }
         }
 
-        Ok(())
     }
 
     /// Load the fallback values for the inputs.
@@ -325,10 +326,7 @@ pub const ANY_FALLBACK_TYPES: &[RecordType] = &[
 
 /// Returns `true` if the argument is a constant-like name.
 fn is_constant_name(argument: &str) -> bool {
-    let first_char = match argument.chars().next() {
-        Some(c)  => c,
-        None     => return false,
-    };
+    let Some(first_char) = argument.chars().next() else { return false };
 
     if ! first_char.is_ascii_alphabetic() {
         return false;
@@ -337,6 +335,7 @@ fn is_constant_name(argument: &str) -> bool {
     argument.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+use std::fmt::Write;
 /// Returns the reverse lookup domain for an IP address.
 fn reverse_lookup_domain(ip: IpAddr) -> String {
     match ip {
@@ -349,7 +348,7 @@ fn reverse_lookup_domain(ip: IpAddr) -> String {
             for octet in v6.octets().iter().rev() {
                 let nibble1 = octet & 0x0F;
                 let nibble2 = (octet >> 4) & 0x0F;
-                reversed.push_str(&format!("{:x}.{:x}.", nibble1, nibble2));
+                let _ = write!(reversed, "{nibble1:x}.{nibble2:x}.");
             }
             reversed.push_str("ip6.arpa");
             reversed
@@ -385,7 +384,7 @@ impl UseColours {
             "always"    | "yes"        => Self::Always,
             "never"     | "no"         => Self::Never,
             otherwise => {
-                warn!("Unknown colour setting {:?}", otherwise);
+                warn!("Unknown colour setting {otherwise:?}");
                 Self::Automatic
             },
         }
@@ -450,8 +449,8 @@ pub enum OptionsError {
 impl fmt::Display for OptionsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidQueryType(qt)   => write!(f, "Invalid query type {:?}", qt),
-            Self::InvalidTweak(tw)       => write!(f, "Invalid protocol tweak {:?}", tw),
+            Self::InvalidQueryType(qt)   => write!(f, "Invalid query type {qt:?}"),
+            Self::InvalidTweak(tw)       => write!(f, "Invalid protocol tweak {tw:?}"),
         }
     }
 }

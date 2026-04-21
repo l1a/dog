@@ -63,7 +63,7 @@ async fn main() {
 
     match Options::getopts(env::args_os().skip(1)) {
         OptionsResult::Ok(options) => {
-            info!("Running with options -> {:#?}", options);
+            info!("Running with options -> {options:#?}");
             exit(run(options).await);
         }
 
@@ -95,7 +95,7 @@ async fn main() {
         }
 
         OptionsResult::ListTypes => {
-            println!("{:<12} {:<40} {}", "Type", "Description", "Example");
+            println!("{:<12} {:<40} Example", "Type", "Description");
             for info in all_record_types() {
                 println!("{:<12} {:<40} {}", info.record_type.to_string(), info.description, info.example);
             }
@@ -103,12 +103,12 @@ async fn main() {
         }
 
         OptionsResult::InvalidOptionsFormat(oe) => {
-            eprintln!("dog: Invalid options: {}", oe);
+            eprintln!("dog: Invalid options: {oe}");
             exit(exits::OPTIONS_ERROR);
         }
 
         OptionsResult::InvalidOptions(why) => {
-            eprintln!("dog: Invalid options: {}", why);
+            eprintln!("dog: Invalid options: {why}");
             exit(exits::OPTIONS_ERROR);
         }
     }
@@ -156,14 +156,14 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
     let local_host_hints = match hints::LocalHosts::load() {
         Ok(lh) => lh,
         Err(e) => {
-            warn!("Error loading local host hints: {}", e);
+            warn!("Error loading local host hints: {e}");
             hints::LocalHosts::default()
         }
     };
 
     for hostname_in_query in &requests.inputs.domains {
         if local_host_hints.contains(hostname_in_query) {
-            eprintln!("warning: domain '{}' also exists in hosts file", hostname_in_query);
+            eprintln!("warning: domain '{hostname_in_query}' also exists in hosts file");
         }
     }
 
@@ -240,11 +240,10 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
             }
 
             let protocol = match requests.inputs.transport_type {
-                Some(TransportType::UDP) => Protocol::Udp,
                 Some(TransportType::TCP) => Protocol::Tcp,
                 Some(TransportType::TLS) => Protocol::Tls,
                 Some(TransportType::HTTPS) => Protocol::Https,
-                None => Protocol::Udp,
+                Some(TransportType::UDP) | None => Protocol::Udp,
             };
 
             let port = match protocol {
@@ -271,12 +270,12 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
                         if let Some(ip) = lookup.iter().next() {
                             ip
                         } else {
-                            eprintln!("Failed to resolve nameserver '{}': No IP addresses found", ns_str);
+                            eprintln!("Failed to resolve nameserver '{ns_str}': No IP addresses found");
                             return exits::OPTIONS_ERROR;
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to resolve nameserver '{}': {}", ns_str, e);
+                        eprintln!("Failed to resolve nameserver '{ns_str}': {e}");
                         return exits::OPTIONS_ERROR;
                     }
                 }
@@ -329,15 +328,15 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
                                 (f_domain_str, f_qtype, f_result, f_elapsed)
                             });
                         }
-                        return join_all(fallback_futures).await;
+                        join_all(fallback_futures).await
                     } else {
-                        return vec![(domain_str, qtype, result, elapsed)];
+                        vec![(domain_str, qtype, result, elapsed)]
                     }
                 } else {
                     let query_timer = Instant::now();
                     let result = resolver_clone.lookup(&domain_str, qtype).await;
                     let elapsed = query_timer.elapsed();
-                    return vec![(domain_str, qtype, result, elapsed)];
+                    vec![(domain_str, qtype, result, elapsed)]
                 }
             });
         }
@@ -364,7 +363,7 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
                 TransportType::HTTPS => "HTTPS",
             });
             let duration_ms = elapsed.as_secs_f64() * 1000.0;
-            println!("Query for {} {} on {} ({}) finished in {:.2}ms", domain, qtype, nameserver_str, transport, duration_ms);
+            println!("Query for {domain} {qtype} on {nameserver_str} ({transport}) finished in {duration_ms:.2}ms");
         }
 
         match result {
@@ -381,18 +380,31 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
                     if let ResolveErrorKind::NoRecordsFound { .. } = e.kind() {
                         // Suppress this specific error for ANY queries
                     } else {
-                        format.print_error(e);
+                        format.print_error(&e);
                         errored = true;
                     }
                 } else {
-                    format.print_error(e);
+                    format.print_error(&e);
                     errored = true;
                 }
             }
         }
     }
 
-    if !verbose {
+    if verbose {
+        let duration = timer.map(|t| t.elapsed());
+        if let Some(duration) = duration {
+            let duration_ms = duration.as_secs_f64() * 1000.0;
+            println!("Ran in {duration_ms:.2}ms");
+        }
+
+        if errored {
+            exits::NETWORK_ERROR
+        }
+        else {
+            exits::SUCCESS
+        }
+    } else {
         let duration = timer.map(|t| t.elapsed());
         if format.print(responses, duration) {
             if errored {
@@ -404,20 +416,6 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
         }
         else {
             exits::NO_SHORT_RESULTS
-        }
-    }
-    else {
-        let duration = timer.map(|t| t.elapsed());
-        if let Some(duration) = duration {
-            let duration_ms = duration.as_secs_f64() * 1000.0;
-            println!("Ran in {:.2}ms", duration_ms);
-        }
-
-        if errored {
-            exits::NETWORK_ERROR
-        }
-        else {
-            exits::SUCCESS
         }
     }
 }
