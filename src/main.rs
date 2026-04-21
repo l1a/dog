@@ -34,7 +34,6 @@ use hickory_resolver::proto::rr::RecordType;
 use crate::options::ANY_FALLBACK_TYPES;
 
 // Windows-specific import for retrieving system DNS servers via ipconfig
-#[cfg(windows)] use ipconfig;
 
 mod colours;
 mod hints;
@@ -58,7 +57,7 @@ async fn main() {
 
     #[cfg(windows)]
     if let Err(e) = ansi_term::enable_ansi_support() {
-        warn!("Failed to enable ANSI support: {}", e);
+        warn!("Failed to enable ANSI support: {e}");
     }
 
     match Options::getopts(env::args_os().skip(1)) {
