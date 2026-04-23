@@ -1,6 +1,5 @@
 //! Command-line option parsing.
 
-use std::ffi::OsStr;
 use std::fmt;
 use std::net::IpAddr;
 
@@ -10,6 +9,8 @@ use hickory_resolver::proto::rr::RecordType;
 
 use crate::output::{OutputFormat, UseColours, TextFormat};
 
+#[path = "cli.rs"]
+pub mod cli;
 
 /// The command-line options used when running dog.
 #[derive(PartialEq, Debug)]
@@ -62,69 +63,42 @@ impl Options {
     #[allow(unused_results)]
     pub fn getopts<C>(args: C) -> OptionsResult
     where C: IntoIterator,
-          C::Item: AsRef<OsStr>,
+          C::Item: Into<std::ffi::OsString> + Clone,
     {
-        let mut opts = getopts::Options::new();
+        let command = cli::build_cli();
 
-        // Query options
-        opts.optmulti("q", "query",       "Host name or domain name to query", "HOST");
-        opts.optmulti("t", "type",        "Type of the DNS record being queried (A, MX, NS...)", "TYPE");
-        opts.optmulti("n", "nameserver",  "Address of the nameserver to send packets to", "ADDR");
-        opts.optmulti("",  "class",       "Network class of the DNS record being queried (IN, CH, HS)", "CLASS");
-
-        // Sending options
-        opts.optopt  ("",  "edns",         "Whether to OPT in to EDNS (disable, hide, show)", "SETTING");
-        opts.optopt  ("",  "txid",         "Set the transaction ID to a specific value", "NUMBER");
-        opts.optmulti("Z", "",             "Set uncommon protocol tweaks", "TWEAKS");
-
-        // Protocol options
-        opts.optflag ("U", "udp",          "Use the DNS protocol over UDP");
-        opts.optflag ("T", "tcp",          "Use the DNS protocol over TCP");
-        opts.optflag ("S", "tls",          "Use the DNS-over-TLS protocol");
-        opts.optflag ("H", "https",        "Use the DNS-over-HTTPS protocol");
-
-        // Output options
-        opts.optopt  ("",  "color",        "When to use terminal colors",  "WHEN");
-        opts.optopt  ("",  "colour",       "When to use terminal colours", "WHEN");
-        opts.optflag ("J", "json",         "Display the output as JSON");
-        opts.optflag ("",  "seconds",      "Do not format durations, display them as seconds");
-        opts.optflag ("1", "short",        "Short mode: display nothing but the first result");
-
-        // Meta options
-        opts.optflag ("V", "version",      "Print version information");
-        opts.optflag ("?", "help",         "Print list of command-line options");
-        opts.optflag ("l", "list",         "List known DNS record types");
-        opts.optflag ("v", "verbose",      "Print verbose information");
-
-        let matches = match opts.parse(args.into_iter().collect::<Vec<_>>()) {
+        let matches = match command.try_get_matches_from(args) {
             Ok(m)  => m,
-            Err(e) => return OptionsResult::InvalidOptionsFormat(e),
+            Err(e) => return OptionsResult::InvalidOptionsFormat(e.to_string()),
         };
 
         let uc = UseColours::deduce(&matches);
 
-        if matches.opt_present("version") {
+        if matches.get_flag("version") {
             OptionsResult::Version(uc)
         }
-        else if matches.opt_present("help") {
+        else if matches.get_flag("help") {
             OptionsResult::Help(HelpReason::Flag, uc)
         }
-        else if matches.opt_present("list") {
+        else if matches.get_flag("list") {
             OptionsResult::ListTypes
         }
+        else if let Some(shell) = matches.get_one::<String>("completions") {
+            OptionsResult::Completions(shell.clone())
+        }
         else {
-            let transport_type = if matches.opt_present("udp") {
+            let transport_type = if matches.get_flag("udp") {
                 Some(TransportType::UDP)
-            } else if matches.opt_present("tcp") {
+            } else if matches.get_flag("tcp") {
                 Some(TransportType::TCP)
-            } else if matches.opt_present("tls") {
+            } else if matches.get_flag("tls") {
                 Some(TransportType::TLS)
-            } else if matches.opt_present("https") {
+            } else if matches.get_flag("https") {
                 Some(TransportType::HTTPS)
             } else {
                 None
             };
-            match Self::deduce(matches, transport_type) {
+            match Self::deduce(&matches, transport_type) {
                 Ok(opts) => {
                     if opts.requests.inputs.domains.is_empty() {
                         OptionsResult::Help(HelpReason::NoDomains, uc)
@@ -141,9 +115,9 @@ impl Options {
     }
 
     /// Deduce the options from the command-line matches.
-    fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
-        let verbose = matches.opt_present("verbose");
-        let format = OutputFormat::deduce(&matches);
+    fn deduce(matches: &clap::ArgMatches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
+        let verbose = matches.get_flag("verbose");
+        let format = OutputFormat::deduce(matches);
         let requests = Requests::deduce(matches, transport_type)?;
 
         Ok(Self { requests, verbose, format })
@@ -153,9 +127,10 @@ impl Options {
 
 impl Requests {
     /// Deduce the requests from the command-line matches.
-    fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
+    fn deduce(matches: &clap::ArgMatches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
         let mut dnssec = false;
-        for tweak in matches.opt_strs("Z") {
+        let tweaks = matches.get_many::<String>("Z").unwrap_or_default().cloned().collect::<Vec<_>>();
+        for tweak in tweaks {
             if tweak.eq_ignore_ascii_case("do") || tweak.eq_ignore_ascii_case("dnssec-ok") {
                 dnssec = true;
             } else {
@@ -193,24 +168,26 @@ pub struct Inputs {
 
 impl Inputs {
     /// Deduce the inputs from the command-line matches.
-    fn deduce(matches: getopts::Matches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
+    fn deduce(matches: &clap::ArgMatches, transport_type: Option<TransportType>) -> Result<Self, OptionsError> {
         let mut inputs = Self {
             transport_type,
             ..Self::default()
         };
-        inputs.load_named_args(&matches)?;
+        inputs.load_named_args(matches)?;
         inputs.load_free_args(matches);
         inputs.load_fallbacks();
         Ok(inputs)
     }
 
     /// Load the named arguments from the command-line matches.
-    fn load_named_args(&mut self, matches: &getopts::Matches) -> Result<(), OptionsError> {
-        for domain in matches.opt_strs("query") {
+    fn load_named_args(&mut self, matches: &clap::ArgMatches) -> Result<(), OptionsError> {
+        let queries = matches.get_many::<String>("query").unwrap_or_default().cloned().collect::<Vec<_>>();
+        for domain in queries {
             self.add_domain(&domain);
         }
 
-        for record_name in matches.opt_strs("type") {
+        let types = matches.get_many::<String>("type").unwrap_or_default().cloned().collect::<Vec<_>>();
+        for record_name in types {
             if record_name.eq_ignore_ascii_case("ANY") {
                 self.add_type(RecordType::ANY);
             }
@@ -222,7 +199,8 @@ impl Inputs {
             }
         }
 
-        for ns in matches.opt_strs("nameserver") {
+        let nameservers = matches.get_many::<String>("nameserver").unwrap_or_default().cloned().collect::<Vec<_>>();
+        for ns in nameservers {
             self.add_nameserver(&ns);
         }
 
@@ -230,8 +208,9 @@ impl Inputs {
     }
 
     /// Load the free arguments from the command-line matches.
-    fn load_free_args(&mut self, matches: getopts::Matches) {
-        for argument in matches.free {
+    fn load_free_args(&mut self, matches: &clap::ArgMatches) {
+        let free_args = matches.get_many::<String>("free").unwrap_or_default().cloned().collect::<Vec<_>>();
+        for argument in free_args {
             if let Some(nameserver) = argument.strip_prefix('@') {
                 self.add_nameserver(nameserver);
             }
@@ -359,12 +338,12 @@ fn reverse_lookup_domain(ip: IpAddr) -> String {
 
 impl OutputFormat {
     /// Deduce the output format from the command-line matches.
-    fn deduce(matches: &getopts::Matches) -> Self {
-        if matches.opt_present("short") {
+    fn deduce(matches: &clap::ArgMatches) -> Self {
+        if matches.get_flag("short") {
             let summary_format = TextFormat::deduce(matches);
             Self::Short(summary_format)
         }
-        else if matches.opt_present("json") {
+        else if matches.get_flag("json") {
             Self::JSON
         }
         else {
@@ -378,8 +357,8 @@ impl OutputFormat {
 
 impl UseColours {
     /// Deduce the colour usage from the command-line matches.
-    fn deduce(matches: &getopts::Matches) -> Self {
-        match matches.opt_str("color").or_else(|| matches.opt_str("colour")).unwrap_or_default().as_str() {
+    fn deduce(matches: &clap::ArgMatches) -> Self {
+        match matches.get_one::<String>("color").cloned().or_else(|| matches.get_one::<String>("colour").cloned()).unwrap_or_default().as_str() {
             "automatic" | "auto" | ""  => Self::Automatic,
             "always"    | "yes"        => Self::Always,
             "never"     | "no"         => Self::Never,
@@ -394,8 +373,8 @@ impl UseColours {
 
 impl TextFormat {
     /// Deduce the text format from the command-line matches.
-    fn deduce(matches: &getopts::Matches) -> Self {
-        let format_durations = ! matches.opt_present("seconds");
+    fn deduce(matches: &clap::ArgMatches) -> Self {
+        let format_durations = ! matches.get_flag("seconds");
         Self { format_durations }
     }
 }
@@ -408,8 +387,8 @@ pub enum OptionsResult {
     /// The options were parsed successfully.
     Ok(Options),
 
-    /// There was an error (from `getopts`) parsing the arguments.
-    InvalidOptionsFormat(getopts::Fail),
+    /// There was an error (from `clap`) parsing the arguments.
+    InvalidOptionsFormat(String),
 
     /// There was an error with the combination of options the user selected.
     InvalidOptions(OptionsError),
@@ -422,6 +401,9 @@ pub enum OptionsResult {
 
     /// One of the arguments was `--list`, to display the list of record types.
     ListTypes,
+
+    /// One of the arguments was `--completions`, to generate shell completions.
+    Completions(String),
 }
 
 /// The reason that help is being displayed. If it’s for the `--help` flag,
@@ -567,8 +549,10 @@ mod test {
 
     #[test]
     fn fail() {
-        assert_eq!(Options::getopts(&[ "--pear" ]),
-                   OptionsResult::InvalidOptionsFormat(getopts::Fail::UnrecognizedOption("pear".into())));
+        match Options::getopts(&[ "--pear" ]) {
+            OptionsResult::InvalidOptionsFormat(_) => (),
+            _ => panic!("Expected InvalidOptionsFormat for unknown option"),
+        }
     }
 
     #[test]
@@ -724,14 +708,18 @@ mod test {
 
     #[test]
     fn invalid_named_type() {
-        assert_eq!(Options::getopts(&[ "lookup.dog", "--type", "tubes" ]),
-                   OptionsResult::InvalidOptions(OptionsError::InvalidQueryType("tubes".into())));
+        match Options::getopts(&[ "-q", "lookup.dog", "-t", "tubes" ]) {
+            OptionsResult::InvalidOptionsFormat(_) => (),
+            _ => panic!("Expected InvalidOptionsFormat for invalid type"),
+        }
     }
 
     #[test]
     fn invalid_named_type_too_big() {
-        assert_eq!(Options::getopts(&[ "lookup.dog", "--type", "999999" ]),
-                   OptionsResult::InvalidOptions(OptionsError::InvalidQueryType("999999".into())));
+        match Options::getopts(&[ "-q", "lookup.dog", "-t", "999999" ]) {
+            OptionsResult::InvalidOptionsFormat(_) => (),
+            _ => panic!("Expected InvalidOptionsFormat for invalid type"),
+        }
     }
 
     #[test]

@@ -1,4 +1,4 @@
-% dog(1) 0.5.1
+% dog(1) 0.5.2
 
 <!-- This is the dog(1) man page, written in Markdown. -->
 <!-- To generate the roff version, run `just man`, -->
@@ -14,7 +14,7 @@ dog — a command-line DNS client
 SYNOPSIS
 ========
 
-`dog [options] [domains...]`
+`dog [OPTIONS] [--] <arguments>`
 
 **dog** is a command-line DNS client.
 It has colourful output, supports the DNS-over-TLS and DNS-over-HTTPS protocols, and can emit JSON.
@@ -42,16 +42,16 @@ EXAMPLES
 QUERY OPTIONS
 =============
 
-`-q`, `--query=HOST`
+`-q`, `--query <HOST>`
 : Host name or domain name to query.
 
-`-t`, `--type=TYPE`
-: Type of the DNS record being queried (`A`, `MX`, `NS`...)
+`-t`, `--type <TYPE>`
+: Type of the DNS record being queried.
 
-`-n`, `--nameserver=ADDR`
+`-n`, `--nameserver <ADDR>`
 : Address of the nameserver to send packets to.
 
-`--class=CLASS`
+`--class <CLASS>`
 : Network class of the DNS record being queried (`IN`, `CH`, `HS`)
 
 By default, dog will request A records using the system default resolver. At least one domain name must be passed — dog will not automatically query the root nameservers.
@@ -63,8 +63,21 @@ If more than one domain, type, nameserver, or class is specified, dog will perfo
 DNS traditionally uses port 53 for both TCP and UDP. To use a resolver with a different port, include the port number after a colon (`:`) in the nameserver address.
 
 
-TRANSPORT OPTIONS
-=================
+SENDING OPTIONS
+===============
+
+`--edns <SETTING>`
+: Whether to OPT in to EDNS (disable, hide, show).
+
+`--txid <NUMBER>`
+: Set the transaction ID to a specific value.
+
+`-Z <TWEAKS>`
+: Set uncommon protocol tweaks.
+
+
+PROTOCOL OPTIONS
+================
 
 `-U`, `--udp`
 : Use the DNS protocol over UDP.
@@ -96,26 +109,48 @@ OUTPUT OPTIONS
 `-J`, `--json`
 : Display the output as JSON.
 
-`--color`, `--colour=WHEN`
+`--color`, `--colour <WHEN>`
 : When to colourise the output. This can be ‘`always`’ or ‘`automatic`’, or ‘`never`’.
 
 `--seconds`
 : Do not format durations as hours and minutes; instead, display them as seconds.
 
 
-
-
 META OPTIONS
 ============
-
-`--help`
-: Displays an overview of the command-line options.
 
 `-V`, `--version`
 : Displays the version of dog being invoked.
 
+`-?`, `--help`
+: Displays an overview of the command-line options.
+
 `-l`, `--list`
 : List known DNS record types.
+
+`-v`, `--verbose`
+: Print verbose information.
+
+`--completions <SHELL>`
+: Generate shell completions.
+
+
+SHORTCUTS
+=========
+
+Instead of using the `-q`, `-t`, and `-n` flags, you can provide the arguments directly:
+
+`dog lookup.dog`
+: Query a domain
+
+`dog lookup.dog MX`
+: Query a domain for a specific type
+
+`dog lookup.dog @8.8.8.8`
+: Query a domain using a specific nameserver
+
+`dog 1.1.1.1`
+: Perform a reverse lookup for an IP address
 
 
 RECORD TYPES
@@ -153,7 +188,7 @@ EXIT STATUSES
 AUTHOR
 ======
 
-dog is maintained by Benjamin ‘ogham’ Sago.
+dog was originally created by Benjamin ‘ogham’ Sago. This version is a fork maintained by l1a.
 
-**Website:** `https://dns.lookup.dog/` \
-**Source code:** `https://github.com/ogham/dog`
+**Source code:** `https://github.com/l1a/dog` \
+**Upstream:** `https://github.com/ogham/dog`

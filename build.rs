@@ -1,8 +1,7 @@
 //! This build script gets run during every build. Its purpose is to put
-//! together the files used for the `--help` and `--version`, which need to
-//! come in both coloured and non-coloured variants. The main usage text is
-//! contained in `src/usage.txt`; to make it easier to edit, backslashes (\)
-//! are used instead of the beginning of ANSI escape codes.
+//! together the files used for the `--version`, which need to
+//! come in both coloured and non-coloured variants. To make it easier to edit,
+//! backslashes (\) are used instead of the beginning of ANSI escape codes.
 //!
 //! The version string is quite complex: we want to show the version,
 //! current Git hash, and compilation date when building *debug*
@@ -18,14 +17,17 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use clap_complete::{generate_to, Shell};
+use clap_complete_nushell::Nushell;
 use datetime::{LocalDateTime, ISO};
 
+#[path = "src/cli.rs"]
+mod cli;
 
 /// The build script entry point.
 fn main() -> io::Result<()> {
     #![allow(clippy::write_with_newline)]
 
-    let usage   = include_str!("src/usage.txt");
     let tagline = "dog \\1;32m●\\0m command-line DNS client";
     let url     = "https://dns.lookup.dog/";
 
@@ -51,27 +53,26 @@ fn main() -> io::Result<()> {
     let mut f = File::create(out.join("version.bland.txt"))?;
     writeln!(f, "{}", strip_codes(&ver))?;
 
-    // Pretty usage text
-    let mut f = File::create(out.join("usage.pretty.txt"))?;
-    writeln!(f, "{}", convert_codes(tagline))?;
-    writeln!(f)?;
-    write!(f, "{}", convert_codes(usage))?;
+    let mut cmd = cli::build_cli();
+    let comp_dir = out.join("completions");
+    std::fs::create_dir_all(&comp_dir)?;
 
-    // Bland usage text
-    let mut f = File::create(out.join("usage.bland.txt"))?;
-    writeln!(f, "{}", strip_codes(tagline))?;
-    writeln!(f)?;
-    write!(f, "{}", strip_codes(usage))?;
+    generate_to(Shell::Bash, &mut cmd, "dog", &comp_dir)?;
+    generate_to(Shell::Fish, &mut cmd, "dog", &comp_dir)?;
+    generate_to(Shell::Zsh, &mut cmd, "dog", &comp_dir)?;
+    generate_to(Shell::PowerShell, &mut cmd, "dog", &comp_dir)?;
+    generate_to(Shell::Elvish, &mut cmd, "dog", &comp_dir)?;
+    generate_to(Nushell, &mut cmd, "dog", &comp_dir)?;
 
     Ok(())
 }
 
-/// Converts the escape codes in ‘usage.txt’ to ANSI escape codes.
+/// Converts the escape codes to ANSI escape codes.
 fn convert_codes(input: &str) -> String {
     input.replace("\\", "\x1B[")
 }
 
-/// Removes escape codes from ‘usage.txt’.
+/// Removes escape codes.
 fn strip_codes(input: &str) -> String {
     input.replace("\\0m", "")
          .replace("\\1m", "")

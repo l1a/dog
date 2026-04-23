@@ -11,7 +11,7 @@ exclude = [
 ]
 homepage = "https://dns.lookup.dog/"
 license = "EUPL-1.2"
-version = "0.5.1"
+version = "0.5.2"
 
 
 [[bin]]
@@ -41,7 +41,7 @@ tokio = { version = "1", features = ["full"] }
 # command-line
 ansi_term = "0.12"
 atty = "0.2"
-getopts = "0.2"
+clap = "4"
 
 # transaction ID generation
 rand = "0.8"
@@ -54,12 +54,17 @@ futures = "0.3"
 
 # logging
 log = "0.4"
+clap_complete = "4.6.2"
+clap_complete_nushell = "4.6.0"
 
 # windows default nameserver determination
 [target.'cfg(windows)'.dependencies]
 ipconfig = { version = "0.3" }
 
 [build-dependencies]
+clap = "4"
+clap_complete = "4.6.2"
+clap_complete_nushell = "4.6.0"
 datetime = { version = "0.5.2", default-features = false }
 
 [dev-dependencies]

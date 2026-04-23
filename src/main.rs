@@ -67,12 +67,14 @@ async fn main() {
         }
 
         OptionsResult::Help(help_reason, use_colours) => {
+            let mut cmd = options::cli::build_cli();
             if use_colours.should_use_colours() {
-                print!("{}", usage_pretty());
+                cmd = cmd.color(clap::ColorChoice::Always);
+            } else {
+                cmd = cmd.color(clap::ColorChoice::Never);
             }
-            else {
-                print!("{}", usage_bland());
-            }
+
+            let _ = cmd.print_help();
 
             if help_reason == HelpReason::NoDomains {
                 exit(exits::OPTIONS_ERROR);
@@ -101,6 +103,23 @@ async fn main() {
             exit(exits::SUCCESS);
         }
 
+        OptionsResult::Completions(shell) => {
+            use clap_complete::{generate, Shell};
+            use clap_complete_nushell::Nushell;
+
+            let mut cmd = options::cli::build_cli();
+
+            if shell.eq_ignore_ascii_case("nushell") || shell.eq_ignore_ascii_case("nu") {
+                generate(Nushell, &mut cmd, "dog", &mut std::io::stdout());
+            } else if let Ok(s) = shell.parse::<Shell>() {
+                generate(s, &mut cmd, "dog", &mut std::io::stdout());
+            } else {
+                eprintln!("dog: Unknown shell: {shell}");
+                exit(exits::OPTIONS_ERROR);
+            }
+            exit(exits::SUCCESS);
+        }
+
         OptionsResult::InvalidOptionsFormat(oe) => {
             eprintln!("dog: Invalid options: {oe}");
             exit(exits::OPTIONS_ERROR);
@@ -113,15 +132,7 @@ async fn main() {
     }
 }
 
-/// Returns the pretty-printed usage string.
-fn usage_pretty() -> &'static str {
-    include_str!(concat!(env!("OUT_DIR"), "/usage.pretty.txt"))
-}
 
-/// Returns the bland usage string.
-fn usage_bland() -> &'static str {
-    include_str!(concat!(env!("OUT_DIR"), "/usage.bland.txt"))
-}
 
 /// Returns the pretty-printed version string.
 fn version_pretty() -> &'static str {

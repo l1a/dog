@@ -1,15 +1,10 @@
 <div align="center">
 <h1>dog</h1>
 
-[dog](https://dns.lookup.dog/) is a command-line DNS client.
+**dog** is a command-line DNS client.
 
-<a href="https://travis-ci.org/github/ogham/dog">
-    <img src="https://travis-ci.org/ogham/dog.svg?branch=master" alt="Build status" />
-</a>
+*Note: This project is a fork of the upstream [dog](https://github.com/ogham/dog) repository.*
 
-<a href="https://saythanks.io/to/ogham%40bsago.me">
-    <img src="https://img.shields.io/badge/Say%20Thanks-!-1EAEDB.svg" alt="Say thanks!" />
-</a>
 </div>
 
 ![A screenshot of dog making a DNS request](dog-screenshot.png)
@@ -35,11 +30,16 @@ It has colourful output, understands normal command-line argument syntax, suppor
 
 ### Query options
 
-    <arguments>              Human-readable host names, nameservers, types, or classes
-    -q, --query=HOST         Host name or domain name to query
-    -t, --type=TYPE          Type of the DNS record being queried (A, MX, NS...)
-    -n, --nameserver=ADDR    Address of the nameserver to send packets to
-    --class=CLASS            Network class of the DNS record being queried (IN, CH, HS)
+    -q, --query <HOST>       Host name or domain name to query
+    -t, --type <TYPE>        Type of the DNS record being queried [possible values: A, AAAA, ANAME, ANY, AXFR, CAA, CNAME, DNSKEY, DS, HINFO, HTTPS, IXFR, MX, NAPTR, NS, NULL, OPENPGPKEY, OPT, PTR, SOA, SRV, SSHFP, SVCB, TLSA, TXT, RRSIG, NSEC, NSEC3, NSEC3PARAM, TSIG, CDS, CDNSKEY, CSYNC, KEY, SIG]
+    -n, --nameserver <ADDR>  Address of the nameserver to send packets to
+        --class <CLASS>      Network class of the DNS record being queried (IN, CH, HS)
+
+### Sending options
+
+        --edns <SETTING>     Whether to OPT in to EDNS (disable, hide, show)
+        --txid <NUMBER>      Set the transaction ID to a specific value
+    -Z <TWEAKS>              Set uncommon protocol tweaks
 
 ### Protocol options
 
@@ -50,17 +50,27 @@ It has colourful output, understands normal command-line argument syntax, suppor
 
 ### Output options
 
-    -1, --short              Short mode: display nothing but the first result
+        --color <WHEN>       When to use terminal colors
+        --colour <WHEN>      When to use terminal colours
     -J, --json               Display the output as JSON
-    --color, --colour=WHEN   When to colourise the output (always, automatic, never)
-    --seconds                Do not format durations, display them as seconds
-
+        --seconds            Do not format durations, display them as seconds
+    -1, --short              Short mode: display nothing but the first result
 
 ### Meta options
 
-    -?, --help               Print list of command-line options
     -V, --version            Print version information
+    -?, --help               Print list of command-line options
     -l, --list               List known DNS record types
+    -v, --verbose            Print verbose information
+        --completions <SHELL> Generate shell completions
+
+### Shortcuts
+
+    Instead of using the -q, -t, and -n flags, you can provide the arguments directly:
+    dog lookup.dog             Query a domain
+    dog lookup.dog MX          Query a domain for a specific type
+    dog lookup.dog @8.8.8.8    Query a domain using a specific nameserver
+    dog 1.1.1.1                Perform a reverse lookup for an IP address
 
 
 ---
@@ -85,7 +95,7 @@ To install dog, you can download a pre-compiled binary, or you can compile it fr
 
 ### Downloads
 
-Binary downloads of dog are available from [the releases section on GitHub](https://github.com/ogham/dog/releases/) for 64-bit Windows, macOS, and Linux targets. They contain the compiled executable, the manual page, and shell completions.
+Binary downloads of dog are available from [the releases section on GitHub](https://github.com/l1a/dog/releases/) for 64-bit Windows, macOS, and Linux targets. They contain the compiled executable, the manual page, and shell completions.
 
 
 ### Compilation
@@ -137,11 +147,6 @@ For more information, read [the xtests README](xtests/README.md).
 
 
 ---
-
-## Documentation
-
-For documentation on how to use dog, see the website: <https://dns.lookup.dog/>
-
 
 ## See also
 
