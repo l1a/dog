@@ -41,15 +41,15 @@ export DOG_DEBUG := ""
 #---------------#
 
 # run unit tests
-@test: clippy
+@test: fmt clippy
     cargo test --workspace -- --quiet
 
 # run unit tests (in release mode)
-@test-release: clippy
+@test-release: fmt clippy
     cargo test --workspace --release --verbose
 
 # run unit tests (without some features)
-@test-quick: clippy
+@test-quick: fmt clippy
     cargo test --workspace --no-default-features -- --quiet
 
 
@@ -61,6 +61,10 @@ export DOG_DEBUG := ""
 #-----------------------#
 # code quality and misc #
 #-----------------------#
+
+# check code formatting
+@fmt:
+    cargo fmt --check
 
 # lint the code
 @clippy:
