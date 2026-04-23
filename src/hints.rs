@@ -7,7 +7,6 @@ use std::io;
 
 use log::*;
 
-
 /// The set of hostnames that are configured to point to a specific host in
 /// the hosts file on the local machine. This gets queried before a request is
 /// made: because the running OS will consult the hosts file before looking up
@@ -20,7 +19,6 @@ pub struct LocalHosts {
 }
 
 impl LocalHosts {
-
     /// Loads the set of hostnames from the hosts file path on Unix.
     #[cfg(unix)]
     pub fn load() -> io::Result<Self> {

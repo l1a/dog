@@ -1,8 +1,7 @@
 //! Colours, colour schemes, and terminal styling.
 
-use ansi_term::Style;
 use ansi_term::Color::*;
-
+use ansi_term::Style;
 
 /// The **colours** are used to paint the input.
 #[derive(Debug, Default)]
@@ -39,7 +38,6 @@ pub struct Colours {
 }
 
 impl Colours {
-
     /// Create a new colour palette that has a variety of different styles
     /// defined. This is used by default.
     pub fn pretty() -> Self {

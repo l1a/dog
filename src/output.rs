@@ -1,21 +1,19 @@
 //! Text and JSON output.
 
-use std::time::Duration;
 use std::env;
 use std::io::{self, BufWriter, Write};
+use std::time::Duration;
 
-use hickory_resolver::lookup::Lookup;
 use hickory_resolver::error::ResolveError;
+use hickory_resolver::lookup::Lookup;
 use json::object;
 
 use crate::colours::Colours;
-use crate::table::{Table, Section};
-
+use crate::table::{Section, Table};
 
 /// How to format the output data.
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum OutputFormat {
-
     /// Format the output as plain text, optionally adding ANSI colours.
     Text(UseColours, TextFormat),
 
@@ -26,11 +24,9 @@ pub enum OutputFormat {
     JSON,
 }
 
-
 /// When to use colours in the output.
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum UseColours {
-
     /// Always use colours.
     Always,
 
@@ -44,18 +40,19 @@ pub enum UseColours {
 /// Options that govern how text should be rendered in record summaries.
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub struct TextFormat {
-
     /// Whether to format TTLs as hours, minutes, and seconds.
     pub format_durations: bool,
 }
 
 impl UseColours {
-
     /// Whether we should use colours or not. This checks whether the user has
     /// overridden the colour setting, and if not, whether output is to a
     /// terminal.
     pub fn should_use_colours(self) -> bool {
-        self == Self::Always || (atty::is(atty::Stream::Stdout) && env::var("NO_COLOR").is_err() && self != Self::Never)
+        self == Self::Always
+            || (atty::is(atty::Stream::Stdout)
+                && env::var("NO_COLOR").is_err()
+                && self != Self::Never)
     }
 
     /// Creates a palette of colours depending on the user’s wishes or whether
@@ -63,16 +60,13 @@ impl UseColours {
     pub fn palette(self) -> Colours {
         if self.should_use_colours() {
             Colours::pretty()
-        }
-        else {
+        } else {
             Colours::plain()
         }
     }
 }
 
-
 impl OutputFormat {
-
     /// Prints the entirety of the output, formatted according to the
     /// settings. If the duration has been measured, it should also be
     /// printed. Returns `false` if there were no results to print, and `true`
@@ -80,7 +74,10 @@ impl OutputFormat {
     pub fn print(self, responses: Vec<Lookup>, duration: Option<Duration>) -> bool {
         match self {
             Self::Short(_) => {
-                let all_answers = responses.into_iter().flat_map(std::iter::IntoIterator::into_iter).collect::<Vec<_>>();
+                let all_answers = responses
+                    .into_iter()
+                    .flat_map(std::iter::IntoIterator::into_iter)
+                    .collect::<Vec<_>>();
 
                 if all_answers.is_empty() {
                     eprintln!("No results");
@@ -112,8 +109,7 @@ impl OutputFormat {
                     };
 
                     println!("{object}");
-                }
-                else {
+                } else {
                     let object = object! {
                         "responses": rs,
                     };
@@ -147,7 +143,7 @@ impl OutputFormat {
                 if let Some(duration) = duration {
                     println!("Ran in {}ms", duration.as_millis());
                 }
-        }
+            }
         }
 
         true
@@ -174,7 +170,6 @@ impl OutputFormat {
 }
 
 impl TextFormat {
-
     /// Formats a summary of a record in a received DNS response. Each record
     /// type contains wildly different data, so the format of the summary
     /// depends on what record it’s for.
@@ -187,8 +182,7 @@ impl TextFormat {
     pub fn format_duration(self, seconds: u32) -> String {
         if self.format_durations {
             format_duration_hms(seconds)
-        }
-        else {
+        } else {
             format!("{seconds}")
         }
     }
@@ -199,24 +193,23 @@ impl TextFormat {
 fn format_duration_hms(seconds: u32) -> String {
     if seconds < 60 {
         format!("{seconds}s")
-    }
-    else if seconds < 60 * 60 {
-        format!("{}m{:02}s",
-            seconds / 60,
-            seconds % 60)
-    }
-    else if seconds < 60 * 60 * 24 {
-        format!("{}h{:02}m{:02}s",
+    } else if seconds < 60 * 60 {
+        format!("{}m{:02}s", seconds / 60, seconds % 60)
+    } else if seconds < 60 * 60 * 24 {
+        format!(
+            "{}h{:02}m{:02}s",
             seconds / 3600,
             (seconds % 3600) / 60,
-            seconds % 60)
-    }
-    else {
-        format!("{}d{}h{:02}m{:02}s",
+            seconds % 60
+        )
+    } else {
+        format!(
+            "{}d{}h{:02}m{:02}s",
             seconds / 86400,
             (seconds % 86400) / 3600,
             (seconds % 3600) / 60,
-            seconds % 60)
+            seconds % 60
+        )
     }
 }
 

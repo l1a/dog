@@ -10,7 +10,6 @@
 #![warn(single_use_lifetimes)]
 #![warn(trivial_casts, trivial_numeric_casts)]
 #![warn(unused)]
-
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::enum_glob_use)]
 #![allow(clippy::module_name_repetitions)]
@@ -18,20 +17,19 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::wildcard_imports)]
-
 #![deny(unsafe_code)]
 
-use log::*;
-use hickory_resolver::TokioAsyncResolver;
-use hickory_resolver::config::{ResolverConfig, ResolverOpts, NameServerConfig, Protocol};
+use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts};
 use hickory_resolver::error::ResolveErrorKind;
+use hickory_resolver::TokioAsyncResolver;
+use log::*;
 
+use crate::options::ANY_FALLBACK_TYPES;
+use hickory_resolver::proto::rr::RecordType;
 use std::collections::HashSet;
 use std::fs;
 #[allow(unused_imports)]
 use std::net::{IpAddr, SocketAddr};
-use hickory_resolver::proto::rr::RecordType;
-use crate::options::ANY_FALLBACK_TYPES;
 
 // Windows-specific import for retrieving system DNS servers via ipconfig
 
@@ -44,7 +42,6 @@ mod table;
 mod options;
 use self::options::*;
 use futures::future::join_all;
-
 
 /// Configures logging, parses the command-line options, and handles any
 /// errors before passing control over to the Dog type.
@@ -78,8 +75,7 @@ async fn main() {
 
             if help_reason == HelpReason::NoDomains {
                 exit(exits::OPTIONS_ERROR);
-            }
-            else {
+            } else {
                 exit(exits::SUCCESS);
             }
         }
@@ -87,8 +83,7 @@ async fn main() {
         OptionsResult::Version(use_colours) => {
             if use_colours.should_use_colours() {
                 print!("{}", version_pretty());
-            }
-            else {
+            } else {
                 print!("{}", version_bland());
             }
 
@@ -98,7 +93,12 @@ async fn main() {
         OptionsResult::ListTypes => {
             println!("{:<12} {:<40} Example", "Type", "Description");
             for info in all_record_types() {
-                println!("{:<12} {:<40} {}", info.record_type.to_string(), info.description, info.example);
+                println!(
+                    "{:<12} {:<40} {}",
+                    info.record_type.to_string(),
+                    info.description,
+                    info.example
+                );
             }
             exit(exits::SUCCESS);
         }
@@ -132,8 +132,6 @@ async fn main() {
     }
 }
 
-
-
 /// Returns the pretty-printed version string.
 fn version_pretty() -> &'static str {
     include_str!(concat!(env!("OUT_DIR"), "/version.pretty.txt"))
@@ -144,7 +142,6 @@ fn version_bland() -> &'static str {
     include_str!(concat!(env!("OUT_DIR"), "/version.bland.txt"))
 }
 
-
 /// Runs dog with some options, returning the status to exit with.
 ///
 /// # Arguments
@@ -154,9 +151,15 @@ fn version_bland() -> &'static str {
 /// # Returns
 ///
 /// * The process exit code.
-async fn run(Options { requests, format, verbose }: Options) -> i32 {
-    use std::time::Instant;
+async fn run(
+    Options {
+        requests,
+        format,
+        verbose,
+    }: Options,
+) -> i32 {
     use std::net::{IpAddr, SocketAddr};
+    use std::time::Instant;
 
     let mut responses = Vec::new();
     let timer = if verbose { Some(Instant::now()) } else { None };
@@ -201,17 +204,16 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
                 } else {
                     // On Unix/Linux, parse /etc/resolv.conf for DNS server entries
                     match fs::read_to_string("/etc/resolv.conf") {
-                        Ok(content) => {
-                            content.lines()
-                                .filter_map(|line| {
-                                    let line = line.trim();
-                                    line.strip_prefix("nameserver ")?
-                                        .trim()
-                                        .parse::<IpAddr>()
-                                        .ok()
-                                })
-                                .collect()
-                        }
+                        Ok(content) => content
+                            .lines()
+                            .filter_map(|line| {
+                                let line = line.trim();
+                                line.strip_prefix("nameserver ")?
+                                    .trim()
+                                    .parse::<IpAddr>()
+                                    .ok()
+                            })
+                            .collect(),
                         Err(_) => vec![],
                     }
                 };
@@ -234,17 +236,17 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
             if let Some(transport) = requests.inputs.transport_type {
                 match (ns_str.as_str(), transport) {
                     ("google", TransportType::HTTPS) => {
-                    config = ResolverConfig::google_https();
-                    continue;
-                }
+                        config = ResolverConfig::google_https();
+                        continue;
+                    }
                     ("cloudflare", TransportType::HTTPS) => {
-                    config = ResolverConfig::cloudflare_https();
-                    continue;
-                }
+                        config = ResolverConfig::cloudflare_https();
+                        continue;
+                    }
                     ("cloudflare" | "one.one.one.one", TransportType::TLS) => {
-                    config = ResolverConfig::cloudflare_tls();
-                    continue;
-                }
+                        config = ResolverConfig::cloudflare_tls();
+                        continue;
+                    }
                     _ => {}
                 }
             }
@@ -266,21 +268,52 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
 
             let ip_addr: IpAddr = if let Ok(ip) = ns_str.parse::<IpAddr>() {
                 if protocol == Protocol::Tls || protocol == Protocol::Https {
-                    tls_dns_name = if ns_str == "8.8.8.8" || ns_str == "8.8.4.4" || ns_str == "2001:4860:4860::8888" || ns_str == "2001:4860:4860::8844" { Some("dns.google".to_string()) } else if ns_str == "1.1.1.1" || ns_str == "1.0.0.1" || ns_str == "2606:4700:4700::1111" || ns_str == "2606:4700:4700::1001" { Some("cloudflare-dns.com".to_string()) } else { Some(ns_str.clone()) };
+                    tls_dns_name = if ns_str == "8.8.8.8"
+                        || ns_str == "8.8.4.4"
+                        || ns_str == "2001:4860:4860::8888"
+                        || ns_str == "2001:4860:4860::8844"
+                    {
+                        Some("dns.google".to_string())
+                    } else if ns_str == "1.1.1.1"
+                        || ns_str == "1.0.0.1"
+                        || ns_str == "2606:4700:4700::1111"
+                        || ns_str == "2606:4700:4700::1001"
+                    {
+                        Some("cloudflare-dns.com".to_string())
+                    } else {
+                        Some(ns_str.clone())
+                    };
                 }
                 ip
             } else {
                 if protocol == Protocol::Tls || protocol == Protocol::Https {
-                    tls_dns_name = if ns_str == "8.8.8.8" || ns_str == "8.8.4.4" || ns_str == "2001:4860:4860::8888" || ns_str == "2001:4860:4860::8844" { Some("dns.google".to_string()) } else if ns_str == "1.1.1.1" || ns_str == "1.0.0.1" || ns_str == "2606:4700:4700::1111" || ns_str == "2606:4700:4700::1001" { Some("cloudflare-dns.com".to_string()) } else { Some(ns_str.clone()) };
+                    tls_dns_name = if ns_str == "8.8.8.8"
+                        || ns_str == "8.8.4.4"
+                        || ns_str == "2001:4860:4860::8888"
+                        || ns_str == "2001:4860:4860::8844"
+                    {
+                        Some("dns.google".to_string())
+                    } else if ns_str == "1.1.1.1"
+                        || ns_str == "1.0.0.1"
+                        || ns_str == "2606:4700:4700::1111"
+                        || ns_str == "2606:4700:4700::1001"
+                    {
+                        Some("cloudflare-dns.com".to_string())
+                    } else {
+                        Some(ns_str.clone())
+                    };
                 }
 
-                let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+                let resolver =
+                    TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
                 match resolver.lookup_ip(ns_str.as_str()).await {
                     Ok(lookup) => {
                         if let Some(ip) = lookup.iter().next() {
                             ip
                         } else {
-                            eprintln!("Failed to resolve nameserver '{ns_str}': No IP addresses found");
+                            eprintln!(
+                                "Failed to resolve nameserver '{ns_str}': No IP addresses found"
+                            );
                             return exits::OPTIONS_ERROR;
                         }
                     }
@@ -349,7 +382,11 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
     // Process results in order
     for (domain, qtype, result, elapsed) in sorted_results {
         if verbose {
-            let nameservers_set: HashSet<String> = config.name_servers().iter().map(|ns| ns.socket_addr.to_string()).collect();
+            let nameservers_set: HashSet<String> = config
+                .name_servers()
+                .iter()
+                .map(|ns| ns.socket_addr.to_string())
+                .collect();
             let mut nameservers: Vec<String> = nameservers_set.into_iter().collect();
             nameservers.sort();
             let nameserver_str = nameservers.join(", ");
@@ -367,8 +404,7 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
             Ok(response) => {
                 if verbose {
                     format.print(vec![response], None);
-                }
-                else {
+                } else {
                     responses.push(response);
                 }
             }
@@ -397,8 +433,7 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
 
         if errored {
             exits::NETWORK_ERROR
-        }
-        else {
+        } else {
             exits::SUCCESS
         }
     } else {
@@ -406,17 +441,14 @@ async fn run(Options { requests, format, verbose }: Options) -> i32 {
         if format.print(responses, duration) {
             if errored {
                 exits::NETWORK_ERROR
-            }
-            else {
+            } else {
                 exits::SUCCESS
             }
-        }
-        else {
+        } else {
             exits::NO_SHORT_RESULTS
         }
     }
 }
-
 
 /// The possible status numbers dog can exit with.
 mod exits {
