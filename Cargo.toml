@@ -10,8 +10,8 @@ exclude = [
     "/dog-screenshot.png", "/Justfile", "/README.md", "/.rustfmt.toml", "/.travis.yml",
 ]
 homepage = "https://dns.lookup.dog/"
-license = "EUPL-1.2"
-version = "0.5.4"
+license = "GPL-3.0-or-later"
+version = "0.5.5"
 
 
 [[bin]]
