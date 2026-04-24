@@ -29,26 +29,23 @@ fn main() -> io::Result<()> {
     #![allow(clippy::write_with_newline)]
 
     let tagline = "dog \\1;32m●\\0m command-line DNS client";
-    let url = "https://dns.lookup.dog/";
 
     let ver = if is_debug_build() {
         format!(
-            "{}\nv{} \\1;31m(pre-release debug build!)\\0m\n\\1;4;34m{}\\0m",
+            "{}\nv{} \\1;31m(pre-release debug build!)\\0m",
             tagline,
-            version_string(),
-            url
+            version_string()
         )
     } else if is_development_version() {
         format!(
-            "{}\nv{} [{}] built on {} \\1;31m(pre-release!)\\0m\n\\1;4;34m{}\\0m",
+            "{}\nv{} [{}] built on {} \\1;31m(pre-release!)\\0m",
             tagline,
             version_string(),
             git_hash(),
-            build_date(),
-            url
+            build_date()
         )
     } else {
-        format!("{}\nv{}\n\\1;4;34m{}\\0m", tagline, version_string(), url)
+        format!("{}\nv{}", tagline, version_string())
     };
 
     // We need to create these files in the Cargo output directory.
