@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "dog"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "ansi_term",
  "atty",
