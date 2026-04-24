@@ -155,4 +155,5 @@ For more information, read [the xtests README](xtests/README.md).
 
 ## Licence
 
-dog’s source code is licenced under the [European Union Public Licence](https://choosealicense.com/licenses/eupl-1.2/).
+dog’s source code is licensed under the [GNU General Public License v3.0](https://choosealicense.com/licenses/gpl-3.0/).
+*(Original upstream code by Benjamin Sago licensed under EUPL-1.2).*
