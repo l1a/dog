@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Update Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    target-branch: "dependabot"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+
+  # Update GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    target-branch: "dependabot"
+    labels:
+      - "dependencies"
