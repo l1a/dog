@@ -1,4 +1,4 @@
-% dog(1) 0.5.3
+% dog(1) 0.5.4
 
 <!-- This is the dog(1) man page, written in Markdown. -->
 <!-- To generate the roff version, run `just man`, -->
