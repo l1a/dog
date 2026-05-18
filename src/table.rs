@@ -68,19 +68,18 @@ impl Table {
     /// Adds a row to the table, containing the data in the given answer in
     /// the right section.
     pub fn add_row(&mut self, record: &Record, section: Section) {
-        if let Some(data) = record.data() {
-            let qtype = self.coloured_record_type(record);
-            let qname = record.name().to_string();
-            let summary = TextFormat::record_payload_summary(data);
-            let ttl = Some(self.text_format.format_duration(record.ttl()));
-            self.rows.push(Row {
-                qtype,
-                qname,
-                ttl,
-                section,
-                summary,
-            });
-        }
+        let data = &record.data;
+        let qtype = self.coloured_record_type(record);
+        let qname = record.name.to_string();
+        let summary = TextFormat::record_payload_summary(data);
+        let ttl = Some(self.text_format.format_duration(record.ttl));
+        self.rows.push(Row {
+            qtype,
+            qname,
+            ttl,
+            section,
+            summary,
+        });
     }
 
     /// Renders the formatted table to a string.

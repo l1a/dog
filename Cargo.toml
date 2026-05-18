@@ -34,7 +34,7 @@ panic = "abort"
 
 
 [dependencies]
-hickory-resolver = { version = "0.24", features = ["dns-over-rustls", "dns-over-https-rustls", "webpki-roots"] }
+hickory-resolver = { version = "0.26.1", features = ["tls-ring", "https-ring", "webpki-roots"] }
 tokio = { version = "1", features = ["full"] }
 
 # command-line
