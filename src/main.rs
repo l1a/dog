@@ -267,7 +267,10 @@ async fn run(
                 }
             }
 
-            let is_tls = matches!(requests.inputs.transport_type, Some(TransportType::TLS | TransportType::HTTPS));
+            let is_tls = matches!(
+                requests.inputs.transport_type,
+                Some(TransportType::TLS | TransportType::HTTPS)
+            );
 
             let mut tls_dns_name: Option<String> = None;
 
@@ -309,8 +312,13 @@ async fn run(
                     };
                 }
 
-                let resolver =
-                    TokioResolver::builder_with_config(ResolverConfig::default(), hickory_resolver::net::runtime::TokioRuntimeProvider::default()).with_options(ResolverOpts::default()).build().unwrap();
+                let resolver = TokioResolver::builder_with_config(
+                    ResolverConfig::default(),
+                    hickory_resolver::net::runtime::TokioRuntimeProvider::default(),
+                )
+                .with_options(ResolverOpts::default())
+                .build()
+                .unwrap();
                 match resolver.lookup_ip(ns_str.as_str()).await {
                     Ok(lookup) => {
                         if let Some(ip) = lookup.iter().next() {
@@ -334,11 +342,11 @@ async fn run(
                 Some(TransportType::TLS) => {
                     let server_name = tls_dns_name.unwrap_or_else(|| ip_addr.to_string());
                     ConnectionConfig::tls(Arc::from(server_name.as_str()))
-                },
+                }
                 Some(TransportType::HTTPS) => {
                     let server_name = tls_dns_name.unwrap_or_else(|| ip_addr.to_string());
                     ConnectionConfig::https(Arc::from(server_name.as_str()), None)
-                },
+                }
                 Some(TransportType::UDP) | None => ConnectionConfig::udp(),
             };
 
@@ -354,7 +362,13 @@ async fn run(
         // resolver_opts.validate = true;
         resolver_opts.edns0 = true;
     }
-    let resolver = TokioResolver::builder_with_config(config.clone(), hickory_resolver::net::runtime::TokioRuntimeProvider::default()).with_options(resolver_opts).build().unwrap();
+    let resolver = TokioResolver::builder_with_config(
+        config.clone(),
+        hickory_resolver::net::runtime::TokioRuntimeProvider::default(),
+    )
+    .with_options(resolver_opts)
+    .build()
+    .unwrap();
 
     // Collect all lookup futures for parallel execution
     let mut futures = Vec::new();
@@ -426,7 +440,10 @@ async fn run(
             Err(e) => {
                 if requests.inputs.any_query {
                     let err_str = e.to_string();
-                    if e.is_no_records_found() || err_str.contains("Not Implemented") || err_str.contains("Form Error") {
+                    if e.is_no_records_found()
+                        || err_str.contains("Not Implemented")
+                        || err_str.contains("Form Error")
+                    {
                         // Suppress this specific error for ANY queries
                     } else {
                         format.print_error(&e);

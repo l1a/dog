@@ -19,8 +19,8 @@
 
 //! Rendering tables of DNS response results.
 
-use std::time::Duration;
 use std::fmt::Display;
+use std::time::Duration;
 
 use hickory_resolver::proto::rr::{Record, RecordType};
 use std::fmt::Write;
@@ -162,17 +162,20 @@ impl Table {
             | RecordType::SIG
             | RecordType::SSHFP
             | RecordType::TLSA
-            | RecordType::TSIG => paint_styled(
-                self.colours.security,
-                record.record_type().to_string(),
-            ),
+            | RecordType::TSIG => {
+                paint_styled(self.colours.security, record.record_type().to_string())
+            }
             _ => paint_styled(self.colours.default, record.record_type().to_string()),
         }
     }
 
     /// Returns the maximum length of a qtype string.
     fn max_qtype_len(&self) -> usize {
-        self.rows.iter().map(|r| r.qtype.display_len).max().unwrap_or(0)
+        self.rows
+            .iter()
+            .map(|r| r.qtype.display_len)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Returns the maximum length of a qname string.
@@ -201,5 +204,8 @@ fn paint_styled<S: Display>(style: anstyle::Style, text: S) -> StyledString {
     let text_str = text.to_string();
     let display_len = text_str.len();
     let content = style.paint(text_str);
-    StyledString { content, display_len }
+    StyledString {
+        content,
+        display_len,
+    }
 }
