@@ -39,7 +39,6 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 
 # command-line
 ansi_term = "0.12"
-atty = "0.2"
 clap = "4"
 
 

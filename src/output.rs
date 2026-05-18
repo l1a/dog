@@ -20,7 +20,7 @@
 //! Text and JSON output.
 
 use std::env;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, Write, IsTerminal};
 use std::time::Duration;
 
 use hickory_resolver::net::NetError as ResolveError;
@@ -69,7 +69,7 @@ impl UseColours {
     /// terminal.
     pub fn should_use_colours(self) -> bool {
         self == Self::Always
-            || (atty::is(atty::Stream::Stdout)
+            || (io::stdout().is_terminal()
                 && env::var("NO_COLOR").is_err()
                 && self != Self::Never)
     }
