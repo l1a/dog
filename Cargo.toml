@@ -10,7 +10,7 @@ exclude = [
     "/dog-screenshot.png", "/Justfile", "/README.md", "/.rustfmt.toml", "/.travis.yml",
 ]
 license = "GPL-3.0-or-later"
-version = "0.5.6"
+version = "0.5.7"
 
 
 [[bin]]
@@ -34,16 +34,13 @@ panic = "abort"
 
 
 [dependencies]
-hickory-resolver = { version = "0.24", features = ["dns-over-rustls", "dns-over-https-rustls", "webpki-roots"] }
-tokio = { version = "1", features = ["full"] }
+hickory-resolver = { version = "0.26.1", features = ["tls-ring", "https-ring", "webpki-roots"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 
 # command-line
-ansi_term = "0.12"
-atty = "0.2"
+anstyle = "1.0"
 clap = "4"
 
-# transaction ID generation
-rand = "0.8"
 
 # json output
 json = "0.12"

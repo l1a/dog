@@ -20,8 +20,9 @@
 //! Debug error logging.
 
 use std::ffi::OsStr;
+use std::fmt::Display;
 
-use ansi_term::{ANSIString, Colour};
+use anstyle::{Ansi256Color, AnsiColor, Color, Style};
 
 /// Sets the internal logger, changing the log level based on the value of an
 /// environment variable.
@@ -61,9 +62,10 @@ impl log::Log for Logger {
     }
 
     fn log(&self, record: &log::Record<'_>) {
-        let open = Colour::Fixed(243).paint("[");
+        let bracket_style = Style::new().fg_color(Some(Color::Ansi256(Ansi256Color(243))));
+        let open = paint(bracket_style, "[");
         let level = level(record.level());
-        let close = Colour::Fixed(243).paint("]");
+        let close = paint(bracket_style, "]");
 
         eprintln!(
             "{}{} {}{} {}",
@@ -80,12 +82,19 @@ impl log::Log for Logger {
     }
 }
 
-fn level(level: log::Level) -> ANSIString<'static> {
+fn level(level: log::Level) -> String {
     match level {
-        log::Level::Error => Colour::Red.paint("ERROR"),
-        log::Level::Warn => Colour::Yellow.paint("WARN"),
-        log::Level::Info => Colour::Cyan.paint("INFO"),
-        log::Level::Debug => Colour::Blue.paint("DEBUG"),
-        log::Level::Trace => Colour::Fixed(245).paint("TRACE"),
+        log::Level::Error => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Red))), "ERROR"),
+        log::Level::Warn => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow))), "WARN"),
+        log::Level::Info => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan))), "INFO"),
+        log::Level::Debug => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Blue))), "DEBUG"),
+        log::Level::Trace => paint(
+            Style::new().fg_color(Some(Color::Ansi256(Ansi256Color(245)))),
+            "TRACE",
+        ),
     }
+}
+
+fn paint<S: Display>(style: Style, text: S) -> String {
+    format!("{}{}{}", style.render(), text, style.render_reset())
 }

@@ -19,11 +19,27 @@
 
 //! Colours, colour schemes, and terminal styling.
 
-use ansi_term::Color::*;
-use ansi_term::Style;
+use anstyle::{AnsiColor, Color, Style};
+use std::fmt::Display;
+
+/// A trait for painting text with a style.
+pub trait Paint {
+    /// Paint the given text with the style.
+    fn paint<S: Display>(self, text: S) -> String;
+}
+
+impl Paint for Style {
+    fn paint<S: Display>(self, text: S) -> String {
+        if self == Style::default() {
+            text.to_string()
+        } else {
+            format!("{}{}{}", self.render(), text, self.render_reset())
+        }
+    }
+}
 
 /// The **colours** are used to paint the input.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct Colours {
     /// The style for the question name.
     pub qname: Style,
@@ -61,20 +77,28 @@ impl Colours {
     /// defined. This is used by default.
     pub fn pretty() -> Self {
         Self {
-            qname: Blue.bold(),
+            qname: Style::new()
+                .fg_color(Some(Color::Ansi(AnsiColor::Blue)))
+                .bold(),
             answer: Style::default(),
-            a: Green.bold(),
-            aaaa: Green.bold(),
+            a: Style::new()
+                .fg_color(Some(Color::Ansi(AnsiColor::Green)))
+                .bold(),
+            aaaa: Style::new()
+                .fg_color(Some(Color::Ansi(AnsiColor::Green)))
+                .bold(),
 
-            cname: Yellow.normal(),
-            mx: Cyan.normal(),
-            ns: Red.normal(),
-            ptr: Red.normal(),
-            soa: Purple.normal(),
-            srv: Cyan.normal(),
-            txt: Yellow.normal(),
-            security: Yellow.normal(),
-            default: White.on(Red),
+            cname: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow))),
+            mx: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan))),
+            ns: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Red))),
+            ptr: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Red))),
+            soa: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Magenta))),
+            srv: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan))),
+            txt: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow))),
+            security: Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow))),
+            default: Style::new()
+                .fg_color(Some(Color::Ansi(AnsiColor::White)))
+                .bg_color(Some(Color::Ansi(AnsiColor::Red))),
         }
     }
 

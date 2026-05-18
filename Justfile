@@ -4,6 +4,8 @@ all-quick: build-quick test-quick
 
 export DOG_DEBUG := ""
 
+version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
+
 
 #----------#
 # building #
@@ -102,7 +104,7 @@ export DOG_DEBUG := ""
 # build the man pages
 @man:
     mkdir -p "${CARGO_TARGET_DIR:-target}/man"
-    pandoc --standalone -f markdown -t man man/dog.1.md > "${CARGO_TARGET_DIR:-target}/man/dog.1"
+    sed "s/{{ '{{' }}VERSION{{ '}}' }}/{{version}}/g" man/dog.1.md | pandoc --standalone -f markdown -t man > "${CARGO_TARGET_DIR:-target}/man/dog.1"
 
 # build and preview the man page
 @man-preview: man

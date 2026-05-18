@@ -20,10 +20,10 @@
 //! Text and JSON output.
 
 use std::env;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, Write, IsTerminal};
 use std::time::Duration;
 
-use hickory_resolver::error::ResolveError;
+use hickory_resolver::net::NetError as ResolveError;
 use hickory_resolver::lookup::Lookup;
 use json::object;
 
@@ -69,7 +69,7 @@ impl UseColours {
     /// terminal.
     pub fn should_use_colours(self) -> bool {
         self == Self::Always
-            || (atty::is(atty::Stream::Stdout)
+            || (io::stdout().is_terminal()
                 && env::var("NO_COLOR").is_err()
                 && self != Self::Never)
     }
@@ -95,7 +95,7 @@ impl OutputFormat {
             Self::Short(_) => {
                 let all_answers = responses
                     .into_iter()
-                    .flat_map(std::iter::IntoIterator::into_iter)
+                    .flat_map(|r| r.answers().to_vec())
                     .collect::<Vec<_>>();
 
                 if all_answers.is_empty() {
@@ -104,7 +104,7 @@ impl OutputFormat {
                 }
 
                 for answer in all_answers {
-                    println!("{}", TextFormat::record_payload_summary(&answer));
+                    println!("{}", TextFormat::record_payload_summary(&answer.data));
                 }
             }
             Self::JSON => {
@@ -112,7 +112,7 @@ impl OutputFormat {
 
                 for response in responses {
                     let json = object! {
-                        "answers": response.record_iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
+                        "answers": response.answers().iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
                     };
 
                     rs.push(json);
@@ -137,13 +137,13 @@ impl OutputFormat {
                 }
             }
             Self::Text(uc, tf) => {
-                let total_records = responses.iter().flat_map(|r| r.record_iter()).count();
+                let total_records = responses.iter().flat_map(hickory_resolver::lookup::Lookup::answers).count();
                 if total_records > 100 {
                     let stdout = io::stdout();
                     let mut writer = BufWriter::new(stdout);
                     for response in responses {
                         let mut table = Table::new(uc.palette(), tf);
-                        for a in response.record_iter() {
+                        for a in response.answers() {
                             table.add_row(a, Section::Answer);
                         }
                         write!(&mut writer, "{}", table.render()).unwrap();
@@ -152,7 +152,7 @@ impl OutputFormat {
                 } else {
                     for response in responses {
                         let mut table = Table::new(uc.palette(), tf);
-                        for a in response.record_iter() {
+                        for a in response.answers() {
                             table.add_row(a, Section::Answer);
                         }
                         print!("{}", table.render());

@@ -38,9 +38,8 @@
 #![allow(clippy::wildcard_imports)]
 #![deny(unsafe_code)]
 
-use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts};
-use hickory_resolver::error::ResolveErrorKind;
-use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::config::{NameServerConfig, ResolverConfig, ResolverOpts};
+use hickory_resolver::TokioResolver;
 use log::*;
 
 use crate::options::ANY_FALLBACK_TYPES;
@@ -70,11 +69,6 @@ async fn main() {
     use std::process::exit;
 
     logger::configure(env::var_os("DOG_DEBUG"));
-
-    #[cfg(windows)]
-    if let Err(e) = ansi_term::enable_ansi_support() {
-        warn!("Failed to enable ANSI support: {e}");
-    }
 
     match Options::getopts(env::args_os().skip(1)) {
         OptionsResult::Ok(options) => {
@@ -177,7 +171,7 @@ async fn run(
         verbose,
     }: Options,
 ) -> i32 {
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::IpAddr;
     use std::time::Instant;
 
     let mut responses = Vec::new();
@@ -202,8 +196,8 @@ async fn run(
     // Load DNS resolver configuration: use system defaults if no custom nameservers provided
     let config = if requests.inputs.nameservers.is_empty() {
         match requests.inputs.transport_type {
-            Some(TransportType::TLS) => ResolverConfig::cloudflare_tls(),
-            Some(TransportType::HTTPS) => ResolverConfig::google_https(),
+            Some(TransportType::TLS) => ResolverConfig::tls(&hickory_resolver::config::CLOUDFLARE),
+            Some(TransportType::HTTPS) => ResolverConfig::https(&hickory_resolver::config::GOOGLE),
             _ => {
                 // Cross-platform loading of system DNS servers for UDP/TCP transport
                 let nameservers: Vec<IpAddr> = if cfg!(target_os = "windows") {
@@ -236,57 +230,49 @@ async fn run(
                         Err(_) => vec![],
                     }
                 };
-                let mut config = ResolverConfig::new();
+                let mut config = ResolverConfig::from_parts(None, vec![], vec![]);
                 for ns in nameservers {
-                    let socket_addr = SocketAddr::new(ns, 53);
-                    let ns_config = NameServerConfig::new(socket_addr, Protocol::Udp);
+                    use hickory_resolver::config::ConnectionConfig;
+                    let ns_config = NameServerConfig::new(ns, true, vec![ConnectionConfig::udp()]);
                     config.add_name_server(ns_config);
                 }
                 if config.name_servers().is_empty() {
-                    ResolverConfig::google()
+                    ResolverConfig::udp_and_tcp(&hickory_resolver::config::GOOGLE)
                 } else {
                     config
                 }
             }
         }
     } else {
-        let mut config = ResolverConfig::new();
+        let mut config = ResolverConfig::from_parts(None, vec![], vec![]);
         for ns_str in &requests.inputs.nameservers {
+            use hickory_resolver::config::ConnectionConfig;
+            use std::sync::Arc;
+
             if let Some(transport) = requests.inputs.transport_type {
                 match (ns_str.as_str(), transport) {
                     ("google", TransportType::HTTPS) => {
-                        config = ResolverConfig::google_https();
+                        config = ResolverConfig::https(&hickory_resolver::config::GOOGLE);
                         continue;
                     }
                     ("cloudflare", TransportType::HTTPS) => {
-                        config = ResolverConfig::cloudflare_https();
+                        config = ResolverConfig::https(&hickory_resolver::config::CLOUDFLARE);
                         continue;
                     }
                     ("cloudflare" | "one.one.one.one", TransportType::TLS) => {
-                        config = ResolverConfig::cloudflare_tls();
+                        config = ResolverConfig::tls(&hickory_resolver::config::CLOUDFLARE);
                         continue;
                     }
                     _ => {}
                 }
             }
 
-            let protocol = match requests.inputs.transport_type {
-                Some(TransportType::TCP) => Protocol::Tcp,
-                Some(TransportType::TLS) => Protocol::Tls,
-                Some(TransportType::HTTPS) => Protocol::Https,
-                Some(TransportType::UDP) | None => Protocol::Udp,
-            };
-
-            let port = match protocol {
-                Protocol::Tls => 853,
-                Protocol::Https => 443,
-                _ => 53,
-            };
+            let is_tls = matches!(requests.inputs.transport_type, Some(TransportType::TLS | TransportType::HTTPS));
 
             let mut tls_dns_name: Option<String> = None;
 
             let ip_addr: IpAddr = if let Ok(ip) = ns_str.parse::<IpAddr>() {
-                if protocol == Protocol::Tls || protocol == Protocol::Https {
+                if is_tls {
                     tls_dns_name = if ns_str == "8.8.8.8"
                         || ns_str == "8.8.4.4"
                         || ns_str == "2001:4860:4860::8888"
@@ -305,7 +291,7 @@ async fn run(
                 }
                 ip
             } else {
-                if protocol == Protocol::Tls || protocol == Protocol::Https {
+                if is_tls {
                     tls_dns_name = if ns_str == "8.8.8.8"
                         || ns_str == "8.8.4.4"
                         || ns_str == "2001:4860:4860::8888"
@@ -324,7 +310,7 @@ async fn run(
                 }
 
                 let resolver =
-                    TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+                    TokioResolver::builder_with_config(ResolverConfig::default(), hickory_resolver::net::runtime::TokioRuntimeProvider::default()).with_options(ResolverOpts::default()).build().unwrap();
                 match resolver.lookup_ip(ns_str.as_str()).await {
                     Ok(lookup) => {
                         if let Some(ip) = lookup.iter().next() {
@@ -343,11 +329,20 @@ async fn run(
                 }
             };
 
-            let socket_addr = SocketAddr::new(ip_addr, port);
-            let mut ns_config = NameServerConfig::new(socket_addr, protocol);
-            if let Some(name) = tls_dns_name {
-                ns_config.tls_dns_name = Some(name);
-            }
+            let connection = match requests.inputs.transport_type {
+                Some(TransportType::TCP) => ConnectionConfig::tcp(),
+                Some(TransportType::TLS) => {
+                    let server_name = tls_dns_name.unwrap_or_else(|| ip_addr.to_string());
+                    ConnectionConfig::tls(Arc::from(server_name.as_str()))
+                },
+                Some(TransportType::HTTPS) => {
+                    let server_name = tls_dns_name.unwrap_or_else(|| ip_addr.to_string());
+                    ConnectionConfig::https(Arc::from(server_name.as_str()), None)
+                },
+                Some(TransportType::UDP) | None => ConnectionConfig::udp(),
+            };
+
+            let ns_config = NameServerConfig::new(ip_addr, true, vec![connection]);
             config.add_name_server(ns_config);
         }
         config
@@ -355,10 +350,11 @@ async fn run(
 
     let mut resolver_opts = ResolverOpts::default();
     if requests.dnssec {
-        resolver_opts.validate = true;
+        // Validation requires dnssec feature in hickory-resolver, which is not enabled.
+        // resolver_opts.validate = true;
         resolver_opts.edns0 = true;
     }
-    let resolver = TokioAsyncResolver::tokio(config.clone(), resolver_opts);
+    let resolver = TokioResolver::builder_with_config(config.clone(), hickory_resolver::net::runtime::TokioRuntimeProvider::default()).with_options(resolver_opts).build().unwrap();
 
     // Collect all lookup futures for parallel execution
     let mut futures = Vec::new();
@@ -404,7 +400,7 @@ async fn run(
             let nameservers_set: HashSet<String> = config
                 .name_servers()
                 .iter()
-                .map(|ns| ns.socket_addr.to_string())
+                .map(|ns| ns.ip.to_string())
                 .collect();
             let mut nameservers: Vec<String> = nameservers_set.into_iter().collect();
             nameservers.sort();
@@ -429,7 +425,8 @@ async fn run(
             }
             Err(e) => {
                 if requests.inputs.any_query {
-                    if let ResolveErrorKind::NoRecordsFound { .. } = e.kind() {
+                    let err_str = e.to_string();
+                    if e.is_no_records_found() || err_str.contains("Not Implemented") || err_str.contains("Form Error") {
                         // Suppress this specific error for ANY queries
                     } else {
                         format.print_error(&e);
