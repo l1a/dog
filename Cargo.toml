@@ -35,7 +35,7 @@ panic = "abort"
 
 [dependencies]
 hickory-resolver = { version = "0.26.1", features = ["tls-ring", "https-ring", "webpki-roots"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 
 # command-line
 ansi_term = "0.12"
