@@ -10,7 +10,7 @@ exclude = [
     "/dog-screenshot.png", "/Justfile", "/README.md", "/.rustfmt.toml", "/.travis.yml",
 ]
 license = "GPL-3.0-or-later"
-version = "0.5.6"
+version = "0.5.7"
 
 
 [[bin]]
