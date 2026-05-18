@@ -246,6 +246,9 @@ async fn run(
     } else {
         let mut config = ResolverConfig::from_parts(None, vec![], vec![]);
         for ns_str in &requests.inputs.nameservers {
+            use hickory_resolver::config::ConnectionConfig;
+            use std::sync::Arc;
+
             if let Some(transport) = requests.inputs.transport_type {
                 match (ns_str.as_str(), transport) {
                     ("google", TransportType::HTTPS) => {
@@ -264,7 +267,7 @@ async fn run(
                 }
             }
 
-            let is_tls = matches!(requests.inputs.transport_type, Some(TransportType::TLS) | Some(TransportType::HTTPS));
+            let is_tls = matches!(requests.inputs.transport_type, Some(TransportType::TLS | TransportType::HTTPS));
 
             let mut tls_dns_name: Option<String> = None;
 
@@ -325,9 +328,6 @@ async fn run(
                     }
                 }
             };
-
-            use hickory_resolver::config::ConnectionConfig;
-            use std::sync::Arc;
 
             let connection = match requests.inputs.transport_type {
                 Some(TransportType::TCP) => ConnectionConfig::tcp(),

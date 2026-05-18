@@ -137,7 +137,7 @@ impl OutputFormat {
                 }
             }
             Self::Text(uc, tf) => {
-                let total_records = responses.iter().flat_map(|r| r.answers()).count();
+                let total_records = responses.iter().flat_map(hickory_resolver::lookup::Lookup::answers).count();
                 if total_records > 100 {
                     let stdout = io::stdout();
                     let mut writer = BufWriter::new(stdout);
