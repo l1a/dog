@@ -20,13 +20,12 @@
 //! Rendering tables of DNS response results.
 
 use std::time::Duration;
-
-use ansi_term::ANSIString;
+use std::fmt::Display;
 
 use hickory_resolver::proto::rr::{Record, RecordType};
 use std::fmt::Write;
 
-use crate::colours::Colours;
+use crate::colours::{Colours, Paint};
 use crate::output::TextFormat;
 
 /// A **table** is built up from all the response records present in a DNS
@@ -41,11 +40,23 @@ pub struct Table {
 /// A row of the table. This contains all the fields
 #[derive(Debug)]
 struct Row {
-    qtype: ANSIString<'static>,
+    qtype: StyledString,
     qname: String,
     ttl: Option<String>,
     section: Section,
     summary: String,
+}
+
+#[derive(Debug)]
+struct StyledString {
+    content: String,
+    display_len: usize,
+}
+
+impl Display for StyledString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.content)
+    }
 }
 
 /// The section of the DNS response that a record was read from.
@@ -92,7 +103,7 @@ impl Table {
             let ttl_len = self.max_ttl_len();
 
             for r in &self.rows {
-                output.push_str(&" ".repeat(qtype_len - r.qtype.len()));
+                output.push_str(&" ".repeat(qtype_len - r.qtype.display_len));
                 let _ = write!(
                     output,
                     "{} {} ",
@@ -125,17 +136,17 @@ impl Table {
     }
 
     /// Returns a coloured string for a record type.
-    fn coloured_record_type(&self, record: &Record) -> ANSIString<'static> {
+    fn coloured_record_type(&self, record: &Record) -> StyledString {
         match record.record_type() {
-            RecordType::A => self.colours.a.paint("A"),
-            RecordType::AAAA => self.colours.aaaa.paint("AAAA"),
-            RecordType::CNAME => self.colours.cname.paint("CNAME"),
-            RecordType::MX => self.colours.mx.paint("MX"),
-            RecordType::NS => self.colours.ns.paint("NS"),
-            RecordType::PTR => self.colours.ptr.paint("PTR"),
-            RecordType::SOA => self.colours.soa.paint("SOA"),
-            RecordType::SRV => self.colours.srv.paint("SRV"),
-            RecordType::TXT => self.colours.txt.paint("TXT"),
+            RecordType::A => paint_styled(self.colours.a, "A"),
+            RecordType::AAAA => paint_styled(self.colours.aaaa, "AAAA"),
+            RecordType::CNAME => paint_styled(self.colours.cname, "CNAME"),
+            RecordType::MX => paint_styled(self.colours.mx, "MX"),
+            RecordType::NS => paint_styled(self.colours.ns, "NS"),
+            RecordType::PTR => paint_styled(self.colours.ptr, "PTR"),
+            RecordType::SOA => paint_styled(self.colours.soa, "SOA"),
+            RecordType::SRV => paint_styled(self.colours.srv, "SRV"),
+            RecordType::TXT => paint_styled(self.colours.txt, "TXT"),
             RecordType::CAA
             | RecordType::CDS
             | RecordType::CDNSKEY
@@ -151,17 +162,17 @@ impl Table {
             | RecordType::SIG
             | RecordType::SSHFP
             | RecordType::TLSA
-            | RecordType::TSIG => self
-                .colours
-                .security
-                .paint(record.record_type().to_string()),
-            _ => self.colours.default.paint(record.record_type().to_string()),
+            | RecordType::TSIG => paint_styled(
+                self.colours.security,
+                record.record_type().to_string(),
+            ),
+            _ => paint_styled(self.colours.default, record.record_type().to_string()),
         }
     }
 
     /// Returns the maximum length of a qtype string.
     fn max_qtype_len(&self) -> usize {
-        self.rows.iter().map(|r| r.qtype.len()).max().unwrap_or(0)
+        self.rows.iter().map(|r| r.qtype.display_len).max().unwrap_or(0)
     }
 
     /// Returns the maximum length of a qname string.
@@ -179,9 +190,16 @@ impl Table {
     }
 
     /// Returns a coloured string for a section.
-    fn format_section(&self, section: Section) -> ANSIString<'static> {
+    fn format_section(&self, section: Section) -> String {
         match section {
             Section::Answer => self.colours.answer.paint(" "),
         }
     }
+}
+
+fn paint_styled<S: Display>(style: anstyle::Style, text: S) -> StyledString {
+    let text_str = text.to_string();
+    let display_len = text_str.len();
+    let content = style.paint(text_str);
+    StyledString { content, display_len }
 }
