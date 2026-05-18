@@ -20,11 +20,11 @@
 //! Text and JSON output.
 
 use std::env;
-use std::io::{self, BufWriter, Write, IsTerminal};
+use std::io::{self, BufWriter, IsTerminal, Write};
 use std::time::Duration;
 
-use hickory_resolver::net::NetError as ResolveError;
 use hickory_resolver::lookup::Lookup;
+use hickory_resolver::net::NetError as ResolveError;
 use json::object;
 
 use crate::colours::Colours;
@@ -69,9 +69,7 @@ impl UseColours {
     /// terminal.
     pub fn should_use_colours(self) -> bool {
         self == Self::Always
-            || (io::stdout().is_terminal()
-                && env::var("NO_COLOR").is_err()
-                && self != Self::Never)
+            || (io::stdout().is_terminal() && env::var("NO_COLOR").is_err() && self != Self::Never)
     }
 
     /// Creates a palette of colours depending on the user’s wishes or whether
@@ -137,7 +135,10 @@ impl OutputFormat {
                 }
             }
             Self::Text(uc, tf) => {
-                let total_records = responses.iter().flat_map(hickory_resolver::lookup::Lookup::answers).count();
+                let total_records = responses
+                    .iter()
+                    .flat_map(hickory_resolver::lookup::Lookup::answers)
+                    .count();
                 if total_records > 100 {
                     let stdout = io::stdout();
                     let mut writer = BufWriter::new(stdout);

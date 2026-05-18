@@ -84,10 +84,22 @@ impl log::Log for Logger {
 
 fn level(level: log::Level) -> String {
     match level {
-        log::Level::Error => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Red))), "ERROR"),
-        log::Level::Warn => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow))), "WARN"),
-        log::Level::Info => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan))), "INFO"),
-        log::Level::Debug => paint(Style::new().fg_color(Some(Color::Ansi(AnsiColor::Blue))), "DEBUG"),
+        log::Level::Error => paint(
+            Style::new().fg_color(Some(Color::Ansi(AnsiColor::Red))),
+            "ERROR",
+        ),
+        log::Level::Warn => paint(
+            Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow))),
+            "WARN",
+        ),
+        log::Level::Info => paint(
+            Style::new().fg_color(Some(Color::Ansi(AnsiColor::Cyan))),
+            "INFO",
+        ),
+        log::Level::Debug => paint(
+            Style::new().fg_color(Some(Color::Ansi(AnsiColor::Blue))),
+            "DEBUG",
+        ),
         log::Level::Trace => paint(
             Style::new().fg_color(Some(Color::Ansi256(Ansi256Color(245)))),
             "TRACE",
