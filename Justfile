@@ -110,8 +110,8 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 @man-preview: man
     man "${CARGO_TARGET_DIR:-target}/man/dog.1"
 @man-local: man
-    mkdir -p ~/.local/man/man1
-    cp "${CARGO_TARGET_DIR:-target}/man/dog.1" ~/.local/man/man1/
+    mkdir -p ~/.local/share/man/man1
+    cp "${CARGO_TARGET_DIR:-target}/man/dog.1" ~/.local/share/man/man1/
 
 
 #-----------#
