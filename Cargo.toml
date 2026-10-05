@@ -42,8 +42,8 @@ anstyle = "1.0"
 clap = "4"
 
 
-# json output
-json = "0.12"
+# json output (preserve_order keeps keys in insertion order, which is the output's documented shape)
+serde_json = { version = "1", features = ["preserve_order"] }
 
 # async utilities
 futures = "0.3"
