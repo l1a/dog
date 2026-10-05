@@ -88,9 +88,8 @@ async fn main() {
 
             if help_reason == HelpReason::NoDomains {
                 exit(exits::OPTIONS_ERROR);
-            } else {
-                exit(exits::SUCCESS);
             }
+            exit(exits::SUCCESS);
         }
 
         OptionsResult::Version(use_colours) => {
