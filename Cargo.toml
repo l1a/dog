@@ -1,13 +1,21 @@
 [package]
-name = "dog"
+# The crates.io name is `dogdns` because `dog` is taken (an abandoned Datadog client). The installed
+# binary is still `dog`: see [[bin]] below. Nothing in the source reads the package name.
+name = "dogdns"
 description = "A command-line DNS client"
 
 authors = ["Benjamin Sago <ogham@bsago.me>"]
 categories = ["command-line-utilities"]
+keywords = ["dns", "dig", "resolver", "dns-over-https", "dns-over-tls"]
 edition = "2018"
+repository = "https://github.com/l1a/dog"
+homepage = "https://github.com/l1a/dog"
+readme = "README.md"
 exclude = [
+    "/.github", "/.copr", "/packaging", "/scripts",
     "/completions/*", "/man/*", "/xtests/*",
-    "/dog-screenshot.png", "/Justfile", "/README.md", "/.rustfmt.toml", "/.travis.yml",
+    "/dog-screenshot.png", "/dog.code-workspace", "/Justfile",
+    "/AGENTS.md", "/CLAUDE.md", "/CONTRIBUTING.md", "/.rustfmt.toml",
 ]
 license = "GPL-3.0-or-later"
 version = "0.6.0"

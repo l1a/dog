@@ -50,6 +50,28 @@ The test suite covers:
 - CI and release builds use `--locked`, so a version bump without a matching `Cargo.lock` fails instead of being rewritten.
 - This repo is a fork of `ogham/dog`. Always pass `--repo l1a/dog` to `gh pr create` so a PR cannot go to upstream.
 
+## Packaging
+
+- **Names:** the crate (crates.io) and AUR package are `dogdns`; the COPR project is `kentobias/dog` (RPM name `dog`); the
+  Homebrew tap is `l1a/homebrew-dog`. The installed binary is `dog` everywhere (`[[bin]] name = "dog"`). The crate is not
+  called `dog` because that name on crates.io is an abandoned Datadog client, so `cargo install dog` fetched the wrong crate.
+  Nothing in `src/` reads the package name, so renaming the crate cannot change behaviour.
+- **Templates record nothing about a release.** `packaging/copr/dog.spec` carries `@VERSION@` and `@CHANGELOG@` sentinels that
+  `scripts/render_packaging.py` fills from `Cargo.toml` at build time. A stale version cannot be committed when no version is
+  committed. The renderer treats a substitution that matches nothing, and a sentinel that survives rendering, as hard errors;
+  `just packaging-check` (`--self-test`) proves each guard can fail.
+- **COPR** builds `master`'s tip with `make_srpm` (`.copr/Makefile`), using an archive of the checkout as `Source0`, so a PR can
+  build its own SRPM. `copr.yml` rebuilds on a `v*` tag and **refuses unless the tag is the tip of master** (COPR clones master,
+  not the tag, and a published NEVRA cannot be recalled). It skips cleanly when the `COPR_*` secrets are absent. The man page
+  is rendered from `man/dog.1.md` with pandoc at build time, not committed.
+- **Test the RPM for real, not just the SRPM.** `packaging.yml` runs `make -f .copr/Makefile srpm`, `dnf builddep`, then
+  `rpmbuild --rebuild` (which runs `%build`, `%install` and `%check`), checks the file list, installs it and runs `dog --version`.
+  The same sequence runs locally in `podman run registry.fedoraproject.org/fedora:latest`. Install `git` before anything calls it;
+  the Makefile installs it itself under mock.
+- **`--locked` is load-bearing** in the spec: COPR builds with network access and no vendoring, so `Cargo.lock` is the only thing
+  pinning what is built to what CI tested.
+- Packaging is **not** a required check, so `packaging.yml` may use `paths:` filters. `ci.yml` may not (see above).
+
 ## Known issues
 
 - TLS configurations may require appropriate system libraries or cross-compilation toolchains depending on the target OS.

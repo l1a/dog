@@ -1,0 +1,92 @@
+name: COPR Rebuild
+
+# Rebuilds kentobias/dog on COPR when a release is tagged, and pushes the COPR project page
+# text from packaging/copr/project-*.md.
+#
+# WHY THE TAG IS THE TRIGGER, AND WHY THAT IS SAFE: packaging/copr/dog.spec is a template whose
+# version comes from Cargo.toml in the checkout COPR clones, so at the moment vX is pushed the
+# tree the tag names IS X. No post-tag packaging commit is needed.
+#
+# COPR clones the TIP of master, not the tag. So this refuses to run unless the tag points at
+# the tip of master: otherwise COPR would publish whatever master has become since, under the
+# tagged version, and a published NEVRA cannot be recalled.
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    timeout-minutes: 90
+    steps:
+      - name: Install dependencies
+        run: dnf -y install copr-cli git python3
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Guard - the tag is the tip of master, and matches Cargo.toml
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          tip=$(git rev-parse origin/master)
+          here=$(git rev-parse HEAD)
+          if [ "$tip" != "$here" ]; then
+            echo "::error::${GITHUB_REF_NAME} is not the tip of master. COPR builds master's tip, so it would publish different code under this version. Rebuild by hand once master is the release."
+            exit 1
+          fi
+          version=$(python3 scripts/render_packaging.py --print-version)
+          if [ "v${version}" != "${GITHUB_REF_NAME%%-*}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}"
+            exit 1
+          fi
+
+      - name: Configure copr-cli
+        env:
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_USERNAME: ${{ secrets.COPR_USERNAME }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+        run: |
+          set -euo pipefail
+          # A guard, not a failure: a fork has no secrets, and a red check there would be noise
+          # about a credential the fork is not meant to have.
+          if [ -z "${COPR_LOGIN:-}" ] || [ -z "${COPR_TOKEN:-}" ] || [ -z "${COPR_USERNAME:-}" ]; then
+            echo "::notice::COPR credentials not configured; skipping the rebuild"
+            echo "skip=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mkdir -p ~/.config
+          # Written from the environment and never echoed; Actions masks the values in logs.
+          {
+            echo "[copr-cli]"
+            echo "login = $COPR_LOGIN"
+            echo "username = $COPR_USERNAME"
+            echo "token = $COPR_TOKEN"
+            echo "copr_url = https://copr.fedorainfracloud.org"
+          } > ~/.config/copr
+          chmod 600 ~/.config/copr
+          echo "skip=false" >> "$GITHUB_ENV"
+
+      - name: Update the COPR project page
+        if: env.skip != 'true'
+        run: |
+          set -euo pipefail
+          copr-cli modify dog \
+            --description "$(cat packaging/copr/project-description.md)" \
+            --instructions "$(cat packaging/copr/project-instructions.md)"
+
+      # build-package rebuilds from the package's stored SCM source (master, make_srpm) and
+      # waits for the result, exiting non-zero if any chroot fails.
+      - name: Rebuild the COPR package
+        if: env.skip != 'true'
+        run: copr-cli build-package --name dog kentobias/dog

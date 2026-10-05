@@ -32,6 +32,12 @@ add lints, so a PR that did not touch the affected code can still start failing 
 | Man page | `just man` builds and renders |
 | Security Audit | `cargo audit`, on dependency changes and weekly |
 
+## Packaging
+
+`packaging/` holds the templates for COPR (and, later, the AUR and Homebrew). They record no version: the version comes from
+`Cargo.toml` when a package is built. Run `just packaging-check` after touching them. The `Packaging` workflow builds a real RPM
+in a Fedora container, so a spec that parses but cannot build fails on the PR and not on the first release.
+
 ## Releases
 
 1. Bump `version` in `Cargo.toml`, run `cargo build` so `Cargo.lock` follows, and merge that to `master`.
