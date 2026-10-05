@@ -1,80 +1,198 @@
 name: Release
 
+# Pushing a `v*` tag builds, tests, packages and publishes a release.
+# `workflow_dispatch` runs everything EXCEPT the publish and prune steps, so the pipeline can be
+# exercised from a branch without creating a release; the archives land in the run's artifacts.
+
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  publish:
-    name: Build and Release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            asset_name: dog-linux-x86_64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            asset_name: dog-macos-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            asset_name: dog-windows-x86_64
-
+  # Fail in seconds, before spending an hour of runner time, if the tag and the manifest disagree
+  # or Cargo.lock was not updated with the version bump (this has happened: see 2f7d5d4).
+  verify:
+    name: Verify tag and lockfile
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Pandoc (Linux)
-        if: runner.os == 'Linux'
+      - name: Tag matches Cargo.toml
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          # A pre-release tag such as v0.7.0-rc.1 is allowed to carry a suffix the manifest lacks.
+          tag="${GITHUB_REF_NAME#v}"
+          base="${tag%%-*}"
+          if [ "$base" != "$version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}"
+            exit 1
+          fi
+
+      # `--locked` makes cargo fail instead of silently rewriting a stale lockfile.
+      - name: Cargo.lock is up to date
+        run: cargo metadata --locked --format-version 1 > /dev/null
+
+  # The whole CI suite, as a reusable workflow. A release can never ship code that master's CI
+  # would have rejected.
+  ci:
+    name: CI
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+
+  man:
+    name: Build man page
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install pandoc
         run: sudo apt-get update && sudo apt-get install -y pandoc
 
-      - name: Install Pandoc (macOS)
-        if: runner.os == 'macOS'
-        run: brew install pandoc
-
-      - name: Build Binary
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Build Man Page
-        if: runner.os != 'Windows'
+      - name: Build the man page
         run: |
-          mkdir -p target/man
-          pandoc --standalone -f markdown -t man man/dog.1.md > target/man/dog.1
+          just man
+          grep -q '^\.TH' target/man/dog.1
 
-      - name: Package (Linux/macOS)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: man
+          path: target/man/dog.1
+
+  build:
+    name: Build (${{ matrix.suffix }})
+    needs: [ ci, man ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,    suffix: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, suffix: linux-aarch64 }
+          - { os: macos-latest,     suffix: macos-aarch64 }
+          - { os: windows-latest,   suffix: windows-x86_64 }
+          - { os: windows-11-arm,   suffix: windows-aarch64 }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: man
+          path: man-out
+
+      # Completions come from the binary just built, so they cannot disagree with its CLI.
+      - name: Package (Linux and macOS)
         if: runner.os != 'Windows'
+        shell: bash
         run: |
-          mkdir -p release/bin release/man
-          cp target/${{ matrix.target }}/release/dog release/bin/
-          cp target/man/dog.1 release/man/
-          cp -r target/${{ matrix.target }}/release/build/dog-*/out/completions release/
-          cd release
-          tar -czf ../${{ matrix.asset_name }}.tar.gz *
+          set -euo pipefail
+          name="dog-${GITHUB_REF_NAME}-${{ matrix.suffix }}"
+          [ "${GITHUB_REF_TYPE}" = "tag" ] || name="dog-dev-${{ matrix.suffix }}"
+          mkdir -p "dist/$name"/{bin,man,completions}
+          cp target/release/dog "dist/$name/bin/"
+          cp man-out/dog.1 "dist/$name/man/"
+          cp LICENSE README.md "dist/$name/"
+          bin=target/release/dog
+          "$bin" --completions bash       > "dist/$name/completions/dog.bash"
+          "$bin" --completions zsh        > "dist/$name/completions/_dog"
+          "$bin" --completions fish       > "dist/$name/completions/dog.fish"
+          "$bin" --completions powershell > "dist/$name/completions/_dog.ps1"
+          "$bin" --completions elvish     > "dist/$name/completions/dog.elv"
+          "$bin" --completions nushell    > "dist/$name/completions/dog.nu"
+          tar -czf "dist/$name.tar.gz" -C dist "$name"
+          rm -rf "dist/$name"
+          ls -l dist
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p release/bin
-          cp target/${{ matrix.target }}/release/dog.exe release/bin/
-          cp -r target/${{ matrix.target }}/release/build/dog-*/out/completions release/
-          cd release
-          7z a ../${{ matrix.asset_name }}.zip *
+          $ErrorActionPreference = 'Stop'
+          $name = "dog-$env:GITHUB_REF_NAME-${{ matrix.suffix }}"
+          if ($env:GITHUB_REF_TYPE -ne 'tag') { $name = "dog-dev-${{ matrix.suffix }}" }
+          $d = "dist/$name"
+          New-Item -ItemType Directory -Force -Path "$d/bin", "$d/completions" | Out-Null
+          Copy-Item target/release/dog.exe "$d/bin/"
+          Copy-Item LICENSE, README.md $d
+          $bin = 'target/release/dog.exe'
+          foreach ($pair in @(@('powershell', '_dog.ps1'), @('bash', 'dog.bash'), @('zsh', '_dog'),
+                              @('fish', 'dog.fish'), @('elvish', 'dog.elv'), @('nushell', 'dog.nu'))) {
+            & $bin --completions $pair[0] | Out-File -Encoding utf8 "$d/completions/$($pair[1])"
+            if ($LASTEXITCODE -ne 0) { throw "completions for $($pair[0]) failed" }
+          }
+          Compress-Archive -Path $d -DestinationPath "dist/$name.zip"
+          Remove-Item -Recurse -Force $d
+          Get-ChildItem dist
 
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
+      - uses: actions/upload-artifact@v7
         with:
-          files: |
-            ${{ matrix.asset_name }}.tar.gz
-            ${{ matrix.asset_name }}.zip
+          name: release-${{ matrix.suffix }}
+          path: dist/*
+
+  release:
+    name: Publish release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # `pattern` is load-bearing: only `release-*` artifacts become release assets. The `man`
+      # artifact is an input to the build jobs and must not be published on its own.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
+          # A tag with a suffix, such as v0.7.0-rc.1, is a pre-release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  prune:
+    name: Prune old releases
+    if: github.ref_type == 'tag'
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete releases beyond the 20 most recent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release list --limit 1000 --json tagName --jq '.[20:][].tagName' \
+            | xargs -r -I{} gh release delete {} --yes --cleanup-tag
