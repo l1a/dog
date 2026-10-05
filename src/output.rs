@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::net::NetError as ResolveError;
-use json::object;
+use serde_json::json;
 
 use crate::colours::Colours;
 use crate::table::{Section, Table};
@@ -175,32 +175,27 @@ impl OutputFormat {
 fn render_json(responses: &[Vec<String>], duration: Option<Duration>) -> String {
     let rs = responses
         .iter()
-        .map(|answers| object! { "answers": answers.clone() })
+        .map(|answers| json!({ "answers": answers }))
         .collect::<Vec<_>>();
 
+    let mut object = json!({ "responses": rs });
+
     if let Some(duration) = duration {
-        object! {
-            "responses": rs,
-            "duration": {
-                "secs": duration.as_secs(),
-                "millis": duration.subsec_millis(),
-            },
-        }
-        .to_string()
-    } else {
-        object! {
-            "responses": rs,
-        }
-        .to_string()
+        object["duration"] = json!({
+            "secs": duration.as_secs(),
+            "millis": duration.subsec_millis(),
+        });
     }
+
+    object.to_string()
 }
 
 /// Renders the `--json` form of an error, which is written to standard error.
 fn render_error_json(message: &str) -> String {
-    object! {
+    json!({
         "error": true,
         "error_message": message,
-    }
+    })
     .to_string()
 }
 
