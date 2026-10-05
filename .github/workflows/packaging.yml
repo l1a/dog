@@ -1,0 +1,94 @@
+name: Packaging
+
+# Verifies the packaging templates. Not a required check, so it MAY use path filters (unlike
+# ci.yml): a PR that does not touch packaging has nothing for it to verify.
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'packaging/**'
+      - '.copr/**'
+      - 'scripts/render_packaging.py'
+      - 'man/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/packaging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaging-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  render:
+    name: Renderer self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      # Proves the renderer's guards can FAIL (a no-op substitution, a surviving sentinel, a bad
+      # version), and that every template still carries its sentinels and renders cleanly.
+      - run: python3 scripts/render_packaging.py --self-test
+
+  copr:
+    name: COPR build (Fedora)
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    timeout-minutes: 45
+    steps:
+      - name: Install dependencies
+        run: dnf -y install make git rpm-build python3
+
+      - uses: actions/checkout@v6
+
+      # git refuses a repository owned by another user, which is what a container checkout is.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # The exact command COPR runs for a `make_srpm` package.
+      - name: Build the SRPM as COPR does
+        run: make -f .copr/Makefile srpm outdir=/tmp/srpm
+
+      - name: The SRPM carries the version Cargo.toml says
+        run: |
+          set -euo pipefail
+          version=$(python3 scripts/render_packaging.py --print-version)
+          srpm=$(find /tmp/srpm -name '*.src.rpm' -print -quit)
+          [ -n "$srpm" ] || { echo "::error::no .src.rpm was produced"; exit 1; }
+          echo "Cargo.toml: $version   built: $(basename "$srpm")"
+          case "$(basename "$srpm")" in
+            dog-"$version"-*.src.rpm) ;;
+            *) echo "::error::SRPM name does not carry Cargo.toml's version ($version)"; exit 1 ;;
+          esac
+
+      # A real rebuild, not just an SRPM: it runs %build, %install and %check, so a spec that
+      # parses but cannot build, or whose %files is wrong, fails here and not on the first tag.
+      - name: Install build dependencies
+        run: dnf -y builddep /tmp/srpm/*.src.rpm
+
+      - name: Rebuild the SRPM into an RPM
+        run: rpmbuild --rebuild /tmp/srpm/*.src.rpm
+
+      - name: The RPM contains what it should, and runs
+        run: |
+          set -euo pipefail
+          top=$(rpm --eval '%{_topdir}')
+          rpm=$(find "$top/RPMS" -name 'dog-[0-9]*.rpm' -print -quit)
+          [ -n "$rpm" ] || { echo "::error::no binary RPM under $top/RPMS"; exit 1; }
+          rpm -qlp "$rpm"
+          for f in /usr/bin/dog /usr/share/man/man1/dog.1.gz \
+                   /usr/share/bash-completion/completions/dog \
+                   /usr/share/zsh/site-functions/_dog \
+                   /usr/share/fish/vendor_completions.d/dog.fish; do
+            rpm -qlp "$rpm" | grep -qx "$f" || { echo "::error::the RPM is missing $f"; exit 1; }
+          done
+          rpm -ivh --nodeps "$rpm"
+          version=$(python3 scripts/render_packaging.py --print-version)
+          dog --version | tee /dev/stderr | grep -q "v$version"

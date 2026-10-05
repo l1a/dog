@@ -68,6 +68,10 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 @fmt:
     cargo fmt --check
 
+# check the packaging templates (the renderer's guards, and that every template still renders)
+@packaging-check:
+    python3 scripts/render_packaging.py --self-test
+
 # lint the code
 @clippy:
     cargo clippy --all-targets -- -D warnings
