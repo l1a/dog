@@ -49,6 +49,11 @@ jobs:
     name: CI
     needs: verify
     uses: ./.github/workflows/ci.yml
+    # ci.yml's `CI OK` job reads this run's job list through the API, and a called workflow
+    # cannot be granted more than its caller gives it.
+    permissions:
+      contents: read
+      actions: read
 
   man:
     name: Build man page

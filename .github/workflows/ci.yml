@@ -30,6 +30,7 @@ jobs:
   lints:
     name: Format and Clippy
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
@@ -50,6 +51,7 @@ jobs:
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -102,6 +104,7 @@ jobs:
   man:
     name: Man page
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
@@ -119,17 +122,66 @@ jobs:
           grep -q '^\.TH' target/man/dog.1
           man -l target/man/dog.1 > /dev/null
 
-  # The single status check that branch protection requires. `if: always()` matters: without
-  # it a failed dependency would SKIP this job, and a skipped required check counts as passing.
+  # The single status check that branch protection requires.
+  #
+  # This asks the API what every job in the run ACTUALLY concluded instead of trusting
+  # `needs.*.result`. That expression once evaluated to false in a run whose Format and Clippy,
+  # Man page and Fedora jobs were all cancelled, so the gate passed a run it should have failed
+  # (GitHub Actions outage, 2026-10-05). The run's own conclusion was correctly `failure`; only
+  # the job-level expression was wrong, and branch protection trusts the job.
+  #
+  # It fails CLOSED: an API error, an empty listing, or a missing group of jobs all fail it.
+  # `if: always()` is still needed, or a failed dependency would SKIP this job and a skipped
+  # required check counts as passing.
   ci-ok:
     name: CI OK
     if: always()
     needs: [ lints, test, man ]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Lets the job read this run's job list. When release.yml calls this workflow, the caller
+    # must grant `actions: read` too, because a called workflow cannot widen its caller's token.
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.run_id }}
+      NEEDS_RESULTS: ${{ join(needs.*.result, ' ') }}
     steps:
-      - name: Fail unless every job succeeded
+      - name: Verify every job in this run succeeded
         run: |
-          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "true" ]; then
-            echo "::error::one or more required jobs did not succeed"
-            exit 1
-          fi
+          set -euo pipefail
+
+          echo "needs results: ${NEEDS_RESULTS}"
+          case " ${NEEDS_RESULTS} " in
+            *" failure "*|*" cancelled "*|*" skipped "*)
+              echo "::error::a dependency did not succeed (${NEEDS_RESULTS})"
+              exit 1
+              ;;
+          esac
+
+          jobs=$(gh api --paginate "repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" \
+            --jq '.jobs[] | [.name, (.conclusion // .status)] | @tsv')
+          echo "jobs in this run:"
+          printf '%s\n' "$jobs"
+
+          # Judge only the jobs this workflow defines, and never this job itself. When another
+          # workflow calls this one, GitHub prefixes the names ("CI / Test (...)").
+          printf '%s\n' "$jobs" | awk -F'\t' '
+            $1 ~ /(^| \/ )Format and Clippy$/ { lints++; counted = 1 }
+            $1 ~ /(^| \/ )Man page$/           { man++;   counted = 1 }
+            $1 ~ /(^| \/ )Test \(.*\)$/        { tests++; counted = 1 }
+            counted {
+              if ($2 != "success") { bad++; printf "::error::%s concluded %s\n", $1, $2 }
+              counted = 0
+            }
+            END {
+              if (!lints || !man || !tests) {
+                printf "::error::expected lint, test and man jobs, found %d/%d/%d\n", lints, tests, man
+                exit 1
+              }
+              if (bad) exit 1
+              printf "all %d jobs succeeded\n", lints + man + tests
+            }'
