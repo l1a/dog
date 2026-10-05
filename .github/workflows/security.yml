@@ -1,0 +1,31 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+    paths:
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/security.yml'
+  schedule:
+    # Weekly, Sunday 00:00 UTC: advisories are published against dependencies that did not change.
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run cargo audit
+        uses: actions-rust-lang/audit@v1

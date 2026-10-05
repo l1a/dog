@@ -1,0 +1,133 @@
+name: CI
+
+# Runs on every PR to master and every push to master.
+#
+# There are deliberately NO `paths:` filters here. Branch protection requires the final
+# `CI OK` job, and a filtered-out workflow never reports a status, so a docs-only PR would
+# wait on a required check forever. The whole suite is cheap enough to run every time.
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# A newer push to the same PR supersedes the older run; never cancel runs on master itself.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  lints:
+    name: Format and Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      # Same invocation as `just clippy`, so a green local `just` means a green CI.
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64,   os: ubuntu-latest }
+          - { name: linux-aarch64,  os: ubuntu-24.04-arm }
+          - { name: fedora-x86_64,  os: ubuntu-latest, container: "fedora:latest" }
+          - { name: macos-aarch64,  os: macos-latest }
+          - { name: windows-x86_64, os: windows-latest }
+          - { name: windows-aarch64, os: windows-11-arm }
+    steps:
+      # build.rs shells out to `git`, and the Fedora image does not ship it.
+      - name: Install dependencies (Fedora)
+        if: matrix.container
+        run: dnf install -y git gcc
+
+      - uses: actions/checkout@v6
+
+      # dtolnay/rust-toolchain does not work inside a bare container, so Fedora uses rustup.
+      - name: Install Rust (Fedora)
+        if: matrix.container
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install Rust
+        if: ${{ !matrix.container }}
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
+      # None of these touch the network: a live DNS query would make CI depend on the
+      # runner's resolver, not on this code.
+      - name: Smoke test the binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet -- --version
+          cargo run --quiet -- --help > /dev/null
+          for shell in bash zsh fish; do
+            cargo run --quiet -- --completions "$shell" | head -n 1 > /dev/null
+          done
+
+  man:
+    name: Man page
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
+      - name: Build the man page
+        run: just man
+
+      # An empty or truncated file (a failed pandoc leaves one behind) has no .TH header.
+      - name: Check the man page is valid roff
+        run: |
+          grep -q '^\.TH' target/man/dog.1
+          man -l target/man/dog.1 > /dev/null
+
+  # The single status check that branch protection requires. `if: always()` matters: without
+  # it a failed dependency would SKIP this job, and a skipped required check counts as passing.
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [ lints, test, man ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless every job succeeded
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "true" ]; then
+            echo "::error::one or more required jobs did not succeed"
+            exit 1
+          fi

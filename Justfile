@@ -70,7 +70,7 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 
 # lint the code
 @clippy:
-    cargo clippy -- -D warnings
+    cargo clippy --all-targets -- -D warnings
 
 # generate a code coverage report using tarpaulin via docker
 @coverage-docker:

@@ -31,6 +31,19 @@ The test suite covers:
 
 *Note: The original `dog` integration test suite (`xtests/`) and `dns/` wire format parsing tests are no longer applicable as parsing is entirely delegated to `hickory-resolver`.*
 
+## Source control and CI
+
+- **Trunk on `master`.** Short-lived `{feature,fix,chore}/<name>` branches are PR'd into `master`. The old `dev` and
+  `dependabot` branches are retired; Dependabot targets `master`.
+- **`just` is the local mirror of CI.** `just` = build + `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + tests.
+  Run it before pushing. A new Rust release can add lints, so `master` can go red with no code change.
+- **`.github/workflows/ci.yml`** runs on every PR and push to `master`: format and clippy, tests on Linux (x86_64, aarch64,
+  Fedora), macOS and Windows (x86_64, aarch64), and a man-page build. **It has no `paths:` filter on purpose**: branch
+  protection requires the single `CI OK` job, and a filtered-out workflow never reports, which would block docs-only PRs.
+  `CI OK` uses `if: always()` because a *skipped* required check counts as passing.
+- **`security.yml`** runs `cargo audit` on dependency changes and weekly.
+- This repo is a fork of `ogham/dog`. Always pass `--repo l1a/dog` to `gh pr create` so a PR cannot go to upstream.
+
 ## Known issues
 
 - TLS configurations may require appropriate system libraries or cross-compilation toolchains depending on the target OS.
