@@ -278,7 +278,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dog"
+name = "dogdns"
 version = "0.6.0"
 dependencies = [
  "anstyle",
