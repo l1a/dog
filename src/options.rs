@@ -253,14 +253,14 @@ impl Inputs {
                 if argument.eq_ignore_ascii_case("ANY") {
                     self.add_type(RecordType::ANY);
                 } else if let Ok(record_type) = argument.to_uppercase().parse() {
-                    trace!("Got qtype -> {:?}", &argument);
+                    trace!("Got qtype -> {argument:?}");
                     self.add_type(record_type);
                 } else {
-                    trace!("Got single-word domain -> {:?}", &argument);
+                    trace!("Got single-word domain -> {argument:?}");
                     self.add_domain(&argument);
                 }
             } else {
-                trace!("Got domain -> {:?}", &argument);
+                trace!("Got domain -> {argument:?}");
 
                 if let Ok(ip) = argument.parse::<IpAddr>() {
                     let reverse_domain = reverse_lookup_domain(ip);
