@@ -106,33 +106,18 @@ impl OutputFormat {
                 }
             }
             Self::JSON => {
-                let mut rs = Vec::new();
+                let answers = responses
+                    .iter()
+                    .map(|response| {
+                        response
+                            .answers()
+                            .iter()
+                            .map(std::string::ToString::to_string)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
 
-                for response in responses {
-                    let json = object! {
-                        "answers": response.answers().iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
-                    };
-
-                    rs.push(json);
-                }
-
-                if let Some(duration) = duration {
-                    let object = object! {
-                        "responses": rs,
-                        "duration": {
-                            "secs": duration.as_secs(),
-                            "millis": duration.subsec_millis(),
-                        },
-                    };
-
-                    println!("{object}");
-                } else {
-                    let object = object! {
-                        "responses": rs,
-                    };
-
-                    println!("{object}");
-                }
+                println!("{}", render_json(&answers, duration));
             }
             Self::Text(uc, tf) => {
                 let total_records = responses
@@ -178,15 +163,45 @@ impl OutputFormat {
             }
 
             Self::JSON => {
-                let object = object! {
-                    "error": true,
-                    "error_message": error.to_string(),
-                };
-
-                eprintln!("{object}");
+                eprintln!("{}", render_error_json(&error.to_string()));
             }
         }
     }
+}
+
+/// Renders the `--json` output for a set of responses: each inner list is
+/// the answers of one response, as text. The duration is included only if it
+/// was measured.
+fn render_json(responses: &[Vec<String>], duration: Option<Duration>) -> String {
+    let rs = responses
+        .iter()
+        .map(|answers| object! { "answers": answers.clone() })
+        .collect::<Vec<_>>();
+
+    if let Some(duration) = duration {
+        object! {
+            "responses": rs,
+            "duration": {
+                "secs": duration.as_secs(),
+                "millis": duration.subsec_millis(),
+            },
+        }
+        .to_string()
+    } else {
+        object! {
+            "responses": rs,
+        }
+        .to_string()
+    }
+}
+
+/// Renders the `--json` form of an error, which is written to standard error.
+fn render_error_json(message: &str) -> String {
+    object! {
+        "error": true,
+        "error_message": message,
+    }
+    .to_string()
 }
 
 impl TextFormat {
@@ -246,5 +261,80 @@ mod test {
         assert_eq!(format_duration_hms(3600), "1h00m00s");
         assert_eq!(format_duration_hms(86399), "23h59m59s");
         assert_eq!(format_duration_hms(86400), "1d0h00m00s");
+    }
+
+    // The `--json` output is a public interface, so these pin its exact bytes. The expected
+    // strings were produced by the original `json` crate before it was replaced, and the
+    // replacement had to reproduce them, including key order and which characters are escaped.
+
+    #[test]
+    fn json_no_responses() {
+        assert_eq!(render_json(&[], None), r#"{"responses":[]}"#);
+        assert_eq!(
+            render_json(&[], Some(Duration::new(0, 0))),
+            r#"{"responses":[],"duration":{"secs":0,"millis":0}}"#
+        );
+    }
+
+    #[test]
+    fn json_responses() {
+        assert_eq!(
+            render_json(&[vec!["a.example. 300 IN A 1.2.3.4".into()]], None),
+            r#"{"responses":[{"answers":["a.example. 300 IN A 1.2.3.4"]}]}"#
+        );
+        assert_eq!(
+            render_json(&[vec![]], None),
+            r#"{"responses":[{"answers":[]}]}"#
+        );
+        assert_eq!(
+            render_json(
+                &[vec!["x".into(), "y".into()], vec![], vec!["z".into()]],
+                Some(Duration::new(3, 45_678_912))
+            ),
+            r#"{"responses":[{"answers":["x","y"]},{"answers":[]},{"answers":["z"]}],"duration":{"secs":3,"millis":45}}"#
+        );
+    }
+
+    #[test]
+    fn json_escaping() {
+        let answers = vec![
+            "plain".to_string(),
+            "quote\" backslash\\ slash/ tab\t nl\n cr\r bs\u{8} ff\u{c}".to_string(),
+            "ctl\u{1} \u{1f} del\u{7f}".to_string(),
+            "unicode é 日本 \u{1F415} ls\u{2028} ps\u{2029}".to_string(),
+            String::new(),
+        ];
+        let expected = [
+            r#"{"responses":[{"answers":["plain","quote\" backslash\\ slash/ tab\t nl\n cr\r bs\b ff\f","ctl\u0001 \u001f del"#,
+            "\u{7f}",
+            r#"","unicode é 日本 🐕 ls"#,
+            "\u{2028}",
+            " ps",
+            "\u{2029}",
+            r#"",""]}],"duration":{"secs":0,"millis":1}}"#,
+        ]
+        .concat();
+        assert_eq!(
+            render_json(&[answers], Some(Duration::from_millis(1))),
+            expected
+        );
+    }
+
+    #[test]
+    fn json_errors() {
+        assert_eq!(
+            render_error_json("plain error"),
+            r#"{"error":true,"error_message":"plain error"}"#
+        );
+        let expected = [
+            r#"{"error":true,"error_message":"bad \"thing\"\n\u0001"#,
+            "\u{2028}",
+            r#" é"}"#,
+        ]
+        .concat();
+        assert_eq!(
+            render_error_json("bad \"thing\"\n\u{1}\u{2028} é"),
+            expected
+        );
     }
 }
