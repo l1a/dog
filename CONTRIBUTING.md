@@ -34,5 +34,13 @@ add lints, so a PR that did not touch the affected code can still start failing 
 
 ## Releases
 
-Pushing a `v*` tag runs the release workflow. Bump the version in `Cargo.toml`, update `Cargo.lock`, and
-merge that to `master` before tagging.
+1. Bump `version` in `Cargo.toml`, run `cargo build` so `Cargo.lock` follows, and merge that to `master`.
+2. Tag the merge commit and push the tag: `git tag v0.7.0 && git push origin v0.7.0`.
+3. The `Release` workflow checks the tag against `Cargo.toml` and `Cargo.lock`, runs the full CI suite, then builds
+   Linux (x86_64, aarch64), macOS (aarch64) and Windows (x86_64, aarch64) archives. Each holds the binary, the man
+   page, shell completions, `LICENSE` and `README.md`. It publishes them with a `SHA256SUMS` file.
+4. A tag with a suffix, such as `v0.7.0-rc.1`, is published as a pre-release.
+5. Only the 20 most recent releases are kept; older releases and their tags are deleted.
+
+To exercise the pipeline without publishing, run the `Release` workflow manually (`workflow_dispatch`). It builds
+everything and leaves the archives in the run's artifacts, but skips the publish and prune jobs.
