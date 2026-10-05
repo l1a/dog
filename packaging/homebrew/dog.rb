@@ -47,8 +47,15 @@ class Dog < Formula
 
   test do
     # No DNS query: a Homebrew test machine may have no network, and the answer would depend
-    # on it. `--version` proves the binary runs and is the version the formula claims.
-    assert_match version.to_s, shell_output("#{bin}/dog --version")
+    # on it. `--version` proves the binary runs.
+    output = shell_output("#{bin}/dog --version")
+    assert_match "command-line DNS client", output
+
+    # ...and, for a release, that it is the version the formula claims. A --HEAD build is named
+    # HEAD-<sha> while the binary reports Cargo.toml's version, so the two can only be compared
+    # for a release. CI installs with --HEAD (there is no tag to build before a release exists),
+    # which is why this is guarded and not simply asserted.
+    assert_match version.to_s, output unless version.head?
 
     # The completions the CLI generates must be real, and the man page must carry the real
     # version in its footer. A bare existence check would pass on an unsubstituted placeholder.
