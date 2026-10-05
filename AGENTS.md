@@ -41,6 +41,18 @@ The test suite covers:
   Fedora), macOS and Windows (x86_64, aarch64), and a man-page build. **It has no `paths:` filter on purpose**: branch
   protection requires the single `CI OK` job, and a filtered-out workflow never reports, which would block docs-only PRs.
   `CI OK` uses `if: always()` because a *skipped* required check counts as passing.
+- **`CI OK` asks the API what every job concluded; it does not trust `needs.*.result`.** During a GitHub Actions outage
+  (2026-10-05) that expression evaluated to false in a run whose Format and Clippy, Man page and Fedora jobs were all
+  *cancelled*, so the gate passed a run it should have failed. The run's own conclusion was correctly `failure`; only the
+  job-level check was wrong, and branch protection trusts the job. The gate now lists the run's jobs, fails on any that is
+  not `success`, and fails closed on an API error or a missing lint/test/man group. It still cross-checks `needs`. When
+  `release.yml` calls `ci.yml`, the caller must grant `actions: read`, because a called workflow cannot widen its caller's
+  token (job names then carry a `CI / ` prefix, which the gate allows for).
+- **Test a CI gate against the real failure, not against a green run.** The gate step was exercised under a fake `gh` that
+  replays saved job lists from the false-green run and a genuinely green one. A gate that has only ever seen green runs has
+  not been shown to fail.
+- **`timeout-minutes` bounds a job that is running and hung. It does not count time spent waiting for a runner**, so it cannot
+  shorten a stall in GitHub's queue (about 15 minutes before the job is cancelled). Rerun cancelled jobs once the queue clears.
 - **`security.yml`** runs `cargo audit` on dependency changes and weekly.
 - **`release.yml`** runs on a `v*` tag: it verifies the tag against `Cargo.toml` and `Cargo.lock`, calls `ci.yml` as a
   reusable workflow (`workflow_call`), builds five native targets, and publishes archives plus `SHA256SUMS`. Completions
