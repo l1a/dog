@@ -44,9 +44,19 @@ VERSION_RE = re.compile(r"^[0-9]+(\.[0-9]+)+$")
 MAINTAINER = "Ken Tobias <634380+l1a@users.noreply.github.com>"
 
 # target -> (template path, the sentinels it must contain and this script fills)
+#
+# The AUR is two files rendered from one set of values, which is why they are rendered
+# together: PKGBUILD and .SRCINFO restate the same version and checksum, and hand-maintaining
+# that agreement is the classic AUR footgun. `.SRCINFO` is never hand-written.
 TARGETS = {
     "copr": ("packaging/copr/dog.spec", ("@VERSION@", "@CHANGELOG@")),
+    "aur-pkgbuild": ("packaging/aur/PKGBUILD.in", ("@VERSION@", "@SHA256@")),
+    "aur-srcinfo": ("packaging/aur/SRCINFO.in", ("@VERSION@", "@SHA256@")),
+    "brew": ("packaging/homebrew/dog.rb", ("@VERSION@", "@SHA256@")),
 }
+
+# The placeholder digest the self-test renders with. It is never a real checksum.
+FAKE_SHA256 = "0" * 64
 
 
 class RenderError(Exception):
@@ -100,12 +110,32 @@ def substitute(template: str, values: dict[str, str], what: str) -> str:
     return out
 
 
-def render(target: str, version: str, root: Path = REPO_ROOT, now: float | None = None) -> str:
+def validate_sha256(sha: str) -> str:
+    if not SHA256_RE.match(sha):
+        raise RenderError(f"not a lowercase sha256 hex digest: {sha!r}")
+    return sha
+
+
+def render(
+    target: str,
+    version: str,
+    sha256: str | None = None,
+    root: Path = REPO_ROOT,
+    now: float | None = None,
+) -> str:
     if target not in TARGETS:
         raise RenderError(f"unknown target {target!r}; choose from {', '.join(sorted(TARGETS))}")
-    path, _ = TARGETS[target]
+    path, sentinels = TARGETS[target]
     template = (root / path).read_text(encoding="utf-8")
-    values = {"@VERSION@": validate_version(version), "@CHANGELOG@": changelog_entry(version, now)}
+    values = {"@VERSION@": validate_version(version)}
+    if "@CHANGELOG@" in sentinels:
+        values["@CHANGELOG@"] = changelog_entry(version, now)
+    if "@SHA256@" in sentinels:
+        if sha256 is None:
+            raise RenderError(f"{path} needs --sha256 (the digest of the tarball actually downloaded)")
+        values["@SHA256@"] = validate_sha256(sha256)
+    elif sha256 is not None:
+        raise RenderError(f"{path} takes no checksum, but --sha256 was given")
     return substitute(template, values, path)
 
 
@@ -145,6 +175,22 @@ def self_test() -> None:
     else:
         raise AssertionError("a surviving sentinel was accepted")
 
+    for bad in ("", "abc", "G" * 64, "A" * 64, "0" * 63, "0" * 65):
+        try:
+            validate_sha256(bad)
+        except RenderError:
+            pass
+        else:
+            raise AssertionError(f"validate_sha256 accepted {bad!r}")
+    # A checksum is required where the template has a sentinel for it, and refused where not.
+    for args in (("aur-pkgbuild", "1.2.3", None), ("copr", "1.2.3", FAKE_SHA256)):
+        try:
+            render(*args)
+        except RenderError:
+            pass
+        else:
+            raise AssertionError(f"render accepted {args!r}")
+
     # 2026-10-05 was a Monday; rpm rejects a changelog whose weekday does not match the date.
     assert changelog_entry("1.2.3", now=1791201600.0).startswith("* Mon Oct 05 2026 ")
 
@@ -154,8 +200,16 @@ def self_test() -> None:
         for s in sentinels:
             assert s in text, f"{path} lost {s}"
         # No release may be recorded in a template: a literal version here would drift.
-        rendered = render(target, "0.0.1")
+        rendered = render(target, "0.0.1", FAKE_SHA256 if "@SHA256@" in sentinels else None)
         assert "0.0.1" in rendered and not SENTINEL_RE.search(rendered)
+        # A sentinel written inside a comment is rewritten along with the real ones, so the
+        # published file's own header ends up quoting a version and a digest instead of
+        # naming the placeholders. Comments describe the sentinels; they never contain them.
+        for n, line in enumerate(text.splitlines(), 1):
+            if line.lstrip().startswith("#") and SENTINEL_RE.search(line):
+                raise AssertionError(f"{path}:{n}: a sentinel inside a comment would be rewritten: {line.strip()}")
+        # A checksum must never be committed in a template either.
+        assert not SHA256_RE.search(text.replace("@SHA256@", "")), f"{path} records a checksum"
     print("self-test passed")
 
 
@@ -164,6 +218,7 @@ def main() -> int:
     ap.add_argument("--print-version", action="store_true", help="print Cargo.toml's [package] version")
     ap.add_argument("--target", choices=sorted(TARGETS))
     ap.add_argument("--version")
+    ap.add_argument("--sha256", help="digest of the source tarball, for targets that pin one")
     ap.add_argument("--out", help="write here instead of stdout")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
@@ -176,7 +231,7 @@ def main() -> int:
         elif args.target:
             if not args.version:
                 raise RenderError("--version is required with --target")
-            text = render(args.target, args.version)
+            text = render(args.target, args.version, args.sha256)
             if args.out:
                 Path(args.out).write_text(text, encoding="utf-8")
             else:

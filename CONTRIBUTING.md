@@ -34,7 +34,7 @@ add lints, so a PR that did not touch the affected code can still start failing 
 
 ## Packaging
 
-`packaging/` holds the templates for COPR (and, later, the AUR and Homebrew). They record no version: the version comes from
+`packaging/` holds the templates for COPR, the AUR (`dogdns`) and Homebrew (`l1a/homebrew-dog`). They record no version: the version comes from
 `Cargo.toml` when a package is built. Run `just packaging-check` after touching them. The `Packaging` workflow builds a real RPM
 in a Fedora container, so a spec that parses but cannot build fails on the PR and not on the first release.
 
@@ -45,8 +45,12 @@ in a Fedora container, so a spec that parses but cannot build fails on the PR an
 3. The `Release` workflow checks the tag against `Cargo.toml` and `Cargo.lock`, runs the full CI suite, then builds
    Linux (x86_64, aarch64), macOS (aarch64) and Windows (x86_64, aarch64) archives. Each holds the binary, the man
    page, shell completions, `LICENSE` and `README.md`. It publishes them with a `SHA256SUMS` file.
-4. A tag with a suffix, such as `v0.7.0-rc.1`, is published as a pre-release.
+4. A tag with a suffix, such as `v0.7.0-rc.1`, is published as a pre-release. Only publish packages for a final tag.
 5. Only the 20 most recent releases are kept; older releases and their tags are deleted.
+6. **COPR** rebuilds by itself when the tag is pushed (`copr.yml`; the tag must be the tip of `master`).
+7. **AUR and Homebrew** are published by hand once the release exists, because they are public and immediate:
+   `just publish-aur 0.7.0` and `just publish-brew 0.7.0`. Each shows the diff and asks you to type the version.
+8. **crates.io** is also by hand and cannot be undone. Check with `cargo publish --dry-run`, then `cargo publish`.
 
 To exercise the pipeline without publishing, run the `Release` workflow manually (`workflow_dispatch`). It builds
 everything and leaves the archives in the run's artifacts, but skips the publish and prune jobs.

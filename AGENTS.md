@@ -70,6 +70,26 @@ The test suite covers:
   the Makefile installs it itself under mock.
 - **`--locked` is load-bearing** in the spec: COPR builds with network access and no vendoring, so `Cargo.lock` is the only thing
   pinning what is built to what CI tested.
+- **AUR (`dogdns`) and Homebrew (`l1a/homebrew-dog`)** use the same templates (`packaging/aur/PKGBUILD.in`, `SRCINFO.in`,
+  `packaging/homebrew/dog.rb`) and are published by `scripts/publish_packaging.py` (`just publish-aur X`, `just publish-brew X`).
+  It downloads the tag tarball, computes the sha256 from what it got, renders, shows the diff, and requires typing the version
+  before it pushes. It is tested against local bare repositories (`--remote`, `--tarball`). **`.SRCINFO` is never hand-written**:
+  `SRCINFO.in` is derived from `makepkg --printsrcinfo`, and `packaging.yml` fails if the rendered pair disagrees with makepkg.
+- **Arch needs `options=('!lto')`.** makepkg's default LTO flags make the C code that `ring` compiles through the `cc` crate into
+  GCC LTO bytecode, which Rust's linker cannot read, so the build fails at the link with `undefined symbol: ring_core_*`. Found by
+  really building the PKGBUILD in an `archlinux:base-devel` container; parsing it would not have caught it. Fedora's flags differ,
+  so the COPR build never showed it.
+- **A tag's `Cargo.lock` must match its `Cargo.toml`, or every packaged build fails.** All packaging uses `--locked`. The `v0.6.0`
+  tag had a stale lockfile (`0.5.7`; the fix, `2f7d5d4`, landed after the tag), so `cargo fetch --locked` fails on its tarball.
+  `release.yml`'s `verify` job now refuses such a tag. The first packaged release must be a fresh tag.
+- **A template's comments must not contain a sentinel token.** The renderer rewrites every one, so a header that named the
+  placeholders came out as a header quoting a real version and digest. `--self-test` rejects it.
+- **Rootless podman uid mapping leaves host-unwritable files** in any directory a container user (such as makepkg's `builder`) was
+  given ownership of. Do the whole render, build and diff inside the container from a read-only snapshot instead of sharing a
+  writable host directory, or a later host-side write fails and a check silently compares stale files.
+- **Homebrew is verified by `packaging.yml`'s `homebrew` job** (`brew audit --strict`, `brew install --HEAD`, `brew test`) through a
+  throwaway local tap, because Homebrew only installs formulae from a tap. It cannot be run locally here (no brew), so that job
+  is the first real test of the formula.
 - Packaging is **not** a required check, so `packaging.yml` may use `paths:` filters. `ci.yml` may not (see above).
 
 ## Known issues
