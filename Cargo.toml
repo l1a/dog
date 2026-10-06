@@ -2,11 +2,11 @@
 # The crates.io name is `dogdns` because `dog` is taken (an abandoned Datadog client). The installed
 # binary is still `dog`: see [[bin]] below. Nothing in the source reads the package name.
 name = "dogdns"
-description = "A command-line DNS client"
+description = "A command-line DNS client, like dig but friendlier: colourful output, simple arguments, DNS-over-TLS, DNS-over-HTTPS, JSON output and 35 record types"
 
 authors = ["Benjamin Sago <ogham@bsago.me>"]
-categories = ["command-line-utilities"]
-keywords = ["dns", "dig", "resolver", "dns-over-https", "dns-over-tls"]
+categories = ["command-line-utilities", "network-programming"]
+keywords = ["dns", "dig", "dns-over-https", "dns-over-tls", "resolver"]
 edition = "2018"
 repository = "https://github.com/l1a/dog"
 homepage = "https://github.com/l1a/dog"

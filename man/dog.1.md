@@ -104,7 +104,7 @@ OUTPUT OPTIONS
 ==============
 
 `-1`, `--short`
-: Short mode: display nothing but the first result.
+: Short mode: display only the data of each answer, one per line. The exit status is 2 if the server gave no result.
 
 `-J`, `--json`
 : Display the output as JSON.
@@ -183,6 +183,8 @@ EXIT STATUSES
 
 3
 : If there was a problem with the command-line arguments.
+
+A closed output pipe, as in `dog example.com | head -n 1`, is not an error: dog stops quietly with status 0.
 
 
 AUTHOR

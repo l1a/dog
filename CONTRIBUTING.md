@@ -6,7 +6,7 @@ are delegated to [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns
 ## Workflow
 
 - `master` is the only long-lived branch. Open pull requests against it from short-lived branches named
-  `{feature,fix,chore}/<name>`.
+  `{feature,fix,chore,docs}/<name>`: `docs/` for a change that touches only documentation.
 - Write short, imperative commit subjects (50 characters or fewer).
 - **Every PR bumps the version in `Cargo.toml`**, with no exception for docs-only, test-only or CI-only changes. Which part
   to bump is explained in [Version numbers](#version-numbers-xyz) below. Commit `Cargo.lock` with it. The bump is past what
@@ -46,6 +46,13 @@ To decide, stop at the first yes:
 A bug fix is a **patch even if it changes the output**, when the old output was wrong. A dependency update is a patch even when the
 dependency's own version jumped, unless it changes something a user sees. A release needs no bump of its own: the last PR to merge
 already bumped it.
+
+## Changing the project description
+
+The description is written once, in `packaging/metadata.toml`. Edit it there, then update the copies it names: `Cargo.toml`, the
+PKGBUILD and `.SRCINFO`, the RPM spec, the Homebrew formula and the README tagline. `just metadata-check` (part of `just scripts-check`
+and of `just pr`) tells you exactly which copy disagrees. The GitHub About box and topics are pushed by hand with
+`just github-metadata`, which shows the change and asks first.
 
 ## Running the checks locally
 

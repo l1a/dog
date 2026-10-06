@@ -1,7 +1,7 @@
 <div align="center">
 <h1>dog</h1>
 
-**dog** is a command-line DNS client.
+**dog** is a command-line DNS client, like `dig` but friendlier.
 
 *This is the maintained fork of [ogham/dog](https://github.com/ogham/dog), which is no longer maintained. It is built on [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns).*
 
@@ -11,71 +11,79 @@
 
 ---
 
-Dogs _can_ look up!
+dog takes its arguments the way you would say them: the name, the record type and the nameserver, in any order. It prints colourful, readable answers, speaks encrypted DNS, and gives scripts a JSON format and documented exit statuses.
 
-**dog** is a command-line DNS client, like `dig`.
-It has colourful output, understands normal command-line argument syntax, supports the DNS-over-TLS and DNS-over-HTTPS protocols, and can emit JSON.
+```sh
+dog example.com               # A records, from your system's nameserver
+dog example.com MX            # a different record type
+dog example.com MX @1.1.1.1   # ask a specific nameserver
+dog 1.1.1.1                   # reverse lookup (PTR)
+dog -S example.com @1.1.1.1   # DNS-over-TLS
+dog -H example.com @1.1.1.1   # DNS-over-HTTPS
+dog --json example.com TXT    # JSON, for scripts
+dog -1 example.com            # short: just the answer data
+```
 
-## Examples
+```text
+$ dog example.com @1.1.1.1
+A example.com. 34s   104.20.23.154
+A example.com. 34s   172.66.147.243
 
-    dog example.net                          Query a domain using default settings
-    dog example.net MX                       ...looking up MX records instead
-    dog example.net MX @1.1.1.1              ...using a specific nameserver instead
-    dog example.net MX @1.1.1.1 -T           ...using TCP rather than UDP
-    dog -q example.net -t MX -n 1.1.1.1 -T   As above, but using explicit arguments
+$ dog 1.1.1.1
+PTR 1.1.1.1.in-addr.arpa. 9m50s   one.one.one.one.
+```
 
----
+## Features
+
+- **Simple arguments.** `dog example.com MX @1.1.1.1`, in any order. Pass an IP address for a reverse lookup. The flags (`-q`, `-t`, `-n`) are there when you want to be explicit.
+- **Encrypted DNS built in.** DNS over UDP, TCP, **TLS** (`-S`) and **HTTPS** (`-H`). The TLS stack is [`rustls`](https://github.com/rustls/rustls), so there is no OpenSSL to install or to link against.
+- **Readable output.** Colour when writing to a terminal (`--color always|automatic|never`), and TTLs shown as `1m09s` rather than a raw number of seconds (`--seconds` for the raw number).
+- **Made for scripts.** `--json` for a JSON document, `-1` for just the answer data, and [documented exit statuses](#using-dog-in-scripts).
+- **35 record types**, including `HTTPS`, `SVCB`, `TLSA`, `SSHFP`, `CAA` and the DNSSEC types. `dog --list` prints each one with an example.
+- **Shell completions** for bash, zsh, fish, PowerShell, elvish and nushell (`dog --completions <shell>`), and a man page.
+- **Runs on Linux, macOS and Windows**, as a single binary.
+
+## Using dog in scripts
+
+`--json` prints one JSON document with the answers as strings, which `jq` can take apart:
+
+```sh
+$ dog --json example.com A @1.1.1.1
+{"responses":[{"answers":["example.com. 218 IN A 172.66.147.243","example.com. 218 IN A 104.20.23.154"]}]}
+
+$ dog --json example.com A @1.1.1.1 | jq -r '.responses[].answers[]'
+example.com. 218 IN A 172.66.147.243
+example.com. 218 IN A 104.20.23.154
+```
+
+`-1` (`--short`) prints only the data of each answer, one per line, and makes the exit status say whether there was an answer:
+
+```sh
+if dog -1 example.com @1.1.1.1 > /dev/null; then echo "resolves"; fi
+```
+
+| Exit status | Meaning |
+|---|---|
+| `0` | Everything went well. |
+| `1` | A network, I/O or TLS error. |
+| `2` | No result from the server **in short mode**. This is any server error, not only `NXDOMAIN`. |
+| `3` | A problem with the command-line arguments. |
+
+Set `DOG_DEBUG` to any non-empty value for debugging output on standard error, or to `trace` for more.
 
 ## Command-line options
 
-### Query options
+`dog --help` lists everything, and `man dog` explains it. At a glance:
 
-    -q, --query <HOST>       Host name or domain name to query
-    -t, --type <TYPE>        Type of the DNS record being queried [possible values: A, AAAA, ANAME, ANY, AXFR, CAA, CNAME, DNSKEY, DS, HINFO, HTTPS, IXFR, MX, NAPTR, NS, NULL, OPENPGPKEY, OPT, PTR, SOA, SRV, SSHFP, SVCB, TLSA, TXT, RRSIG, NSEC, NSEC3, NSEC3PARAM, TSIG, CDS, CDNSKEY, CSYNC, KEY, SIG]
-    -n, --nameserver <ADDR>  Address of the nameserver to send packets to
-        --class <CLASS>      Network class of the DNS record being queried (IN, CH, HS)
+| Group | Options |
+|---|---|
+| **Query** | `-q`/`--query <HOST>`, `-t`/`--type <TYPE>`, `-n`/`--nameserver <ADDR>`, `--class <CLASS>` (`IN`, `CH`, `HS`) |
+| **Protocol** | `-U`/`--udp`, `-T`/`--tcp`, `-S`/`--tls`, `-H`/`--https` |
+| **Output** | `-J`/`--json`, `-1`/`--short`, `--color <WHEN>`, `--seconds` |
+| **Sending** | `--edns <disable\|hide\|show>`, `--txid <NUMBER>`, `-Z <TWEAKS>` |
+| **Meta** | `-V`/`--version`, `-?`/`--help`, `-l`/`--list`, `-v`/`--verbose`, `--completions <SHELL>` |
 
-### Sending options
-
-        --edns <SETTING>     Whether to OPT in to EDNS (disable, hide, show)
-        --txid <NUMBER>      Set the transaction ID to a specific value
-    -Z <TWEAKS>              Set uncommon protocol tweaks
-
-### Protocol options
-
-    -U, --udp                Use the DNS protocol over UDP
-    -T, --tcp                Use the DNS protocol over TCP
-    -S, --tls                Use the DNS-over-TLS protocol
-    -H, --https              Use the DNS-over-HTTPS protocol
-
-### Output options
-
-        --color <WHEN>       When to use terminal colors
-        --colour <WHEN>      When to use terminal colours
-    -J, --json               Display the output as JSON
-        --seconds            Do not format durations, display them as seconds
-    -1, --short              Short mode: display nothing but the first result
-
-### Meta options
-
-    -V, --version            Print version information
-    -?, --help               Print list of command-line options
-    -l, --list               List known DNS record types
-    -v, --verbose            Print verbose information
-        --completions <SHELL> Generate shell completions
-
-### Shortcuts
-
-    Instead of using the -q, -t, and -n flags, you can provide the arguments directly:
-    dog lookup.dog             Query a domain
-    dog lookup.dog MX          Query a domain for a specific type
-    dog lookup.dog @8.8.8.8    Query a domain using a specific nameserver
-    dog 1.1.1.1                Perform a reverse lookup for an IP address
-
-
----
-
-## Record Types
+### Record types
 
 dog supports the following record types: `A`, `AAAA`, `ANAME`, `ANY`, `AXFR`, `CAA`, `CDNSKEY`, `CDS`, `CNAME`, `CSYNC`, `DNSKEY`, `DS`, `HINFO`, `HTTPS`, `IXFR`, `KEY`, `MX`, `NAPTR`, `NS`, `NSEC`, `NSEC3`, `NSEC3PARAM`, `NULL`, `OPENPGPKEY`, `OPT`, `PTR`, `RRSIG`, `SIG`, `SOA`, `SRV`, `SSHFP`, `SVCB`, `TLSA`, `TSIG`, `TXT`.
 
@@ -146,7 +154,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks the project runs (`just`).
 
 ## See also
 
-`mutt`, `tail`, `sleep`, `roff`
+[`dig`](https://linux.die.net/man/1/dig), `host` and `nslookup` (the classic resolvers), [`kdig`](https://www.knot-dns.cz/docs/latest/html/man_kdig.html) and [`drill`](https://nlnetlabs.nl/projects/ldns/about/), and `resolvectl` (systemd-resolved). dog's `--json` output pairs well with [`jq`](https://jqlang.github.io/jq/).
 
 
 ## Licence

@@ -28,6 +28,7 @@ use hickory_resolver::net::NetError as ResolveError;
 use serde_json::json;
 
 use crate::colours::Colours;
+use crate::stdout;
 use crate::table::{Section, Table};
 
 /// How to format the output data.
@@ -102,7 +103,7 @@ impl OutputFormat {
                 }
 
                 for answer in all_answers {
-                    println!("{}", TextFormat::record_payload_summary(&answer.data));
+                    stdout::emit_line(&TextFormat::record_payload_summary(&answer.data));
                 }
             }
             Self::JSON => {
@@ -117,7 +118,7 @@ impl OutputFormat {
                     })
                     .collect::<Vec<_>>();
 
-                println!("{}", render_json(&answers, duration));
+                stdout::emit_line(&render_json(&answers, duration));
             }
             Self::Text(uc, tf) => {
                 let total_records = responses
@@ -125,28 +126,27 @@ impl OutputFormat {
                     .flat_map(hickory_resolver::lookup::Lookup::answers)
                     .count();
                 if total_records > 100 {
-                    let stdout = io::stdout();
-                    let mut writer = BufWriter::new(stdout);
+                    let mut writer = BufWriter::new(io::stdout());
                     for response in responses {
                         let mut table = Table::new(uc.palette(), tf);
                         for a in response.answers() {
                             table.add_row(a, Section::Answer);
                         }
-                        write!(&mut writer, "{}", table.render()).unwrap();
+                        stdout::finish(write!(&mut writer, "{}", table.render()));
                     }
-                    writer.flush().unwrap();
+                    stdout::finish(writer.flush());
                 } else {
                     for response in responses {
                         let mut table = Table::new(uc.palette(), tf);
                         for a in response.answers() {
                             table.add_row(a, Section::Answer);
                         }
-                        print!("{}", table.render());
+                        stdout::emit(&table.render());
                     }
                 }
 
                 if let Some(duration) = duration {
-                    println!("Ran in {}ms", duration.as_millis());
+                    stdout::emit_line(&format!("Ran in {}ms", duration.as_millis()));
                 }
             }
         }

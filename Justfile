@@ -72,12 +72,23 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 @packaging-check:
     python3 scripts/render_packaging.py --self-test
 
-# run the self-tests of every project script: the renderer, the version gate, and the CI change classifier and gate
+# run the self-tests of every project script, and check the project description agrees everywhere
 @scripts-check:
     python3 scripts/render_packaging.py --self-test
     python3 scripts/version_gate.py --self-test
     python3 scripts/ci_changes.py --self-test
     python3 scripts/ci_gate.py --self-test
+    python3 scripts/metadata_check.py --self-test
+    python3 scripts/github_metadata.py --self-test
+    python3 scripts/metadata_check.py
+
+# check that every copy of the project description agrees with packaging/metadata.toml
+@metadata-check:
+    python3 scripts/metadata_check.py
+
+# set the GitHub About box and topics from packaging/metadata.toml (public: shows the change and asks first)
+github-metadata:
+    python3 scripts/github_metadata.py --apply
 
 # publish a released version to the AUR (public and immediate: you must type the version to confirm)
 @publish-aur version:
@@ -142,7 +153,7 @@ pr:
 
     # 1. A feature branch, never master.
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    [ "$BRANCH" = "master" ] && fail "On master: create a feature branch first (feature/, fix/ or chore/<name>)"
+    [ "$BRANCH" = "master" ] && fail "On master: create a feature branch first (feature/, fix/, chore/ or docs/<name>)"
     pass "Branch: $BRANCH"
 
     # 2. Everything committed, so what this gate checks is what gets pushed.
