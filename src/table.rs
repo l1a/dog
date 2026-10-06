@@ -128,10 +128,10 @@ impl Table {
     /// Prints the formatted table to stdout.
     #[allow(dead_code)]
     pub fn print(self, duration: Option<Duration>) {
-        print!("{}", self.render());
+        crate::stdout::emit(&self.render());
 
         if let Some(dur) = duration {
-            println!("Ran in {}ms", dur.as_millis());
+            crate::stdout::emit_line(&format!("Ran in {}ms", dur.as_millis()));
         }
     }
 

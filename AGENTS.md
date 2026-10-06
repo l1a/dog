@@ -19,6 +19,9 @@ The `l1a/dog` fork relies heavily on the [`hickory-resolver`](https://github.com
   - `options.rs` - Command-line argument parsing
   - `output.rs` - Formatting DNS responses (JSON and Text)
   - `table.rs` - Pretty-printing tables for terminal output
+  - `stdout.rs` - The only way to write to standard output. Never use `print!` or `println!` in `src/`: Rust ignores `SIGPIPE`, so they
+    panic (exit 101) on `dog ... | head`. `stdout::emit*` exits quietly with status 0 when the reader has gone; `#![deny(clippy::print_stdout)]`
+    enforces it and `tests/broken_pipe.rs` covers it. (`eprintln!` is fine.)
 
 ## Testing
 
@@ -101,7 +104,7 @@ something a user sees, in which case it follows the questions above.
 
 ## Source control and CI
 
-- **Trunk on `master`.** Short-lived `{feature,fix,chore}/<name>` branches are PR'd into `master`. The old `dev` and
+- **Trunk on `master`.** Short-lived `{feature,fix,chore,docs}/<name>` branches (`docs/` for a change that touches only documentation) are PR'd into `master`. The old `dev` and
   `dependabot` branches are retired; Dependabot targets `master`.
 - **`just` is the local mirror of CI.** `just` = build + `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + tests.
   Run it before pushing. A new Rust release can add lints, so `master` can go red with no code change.

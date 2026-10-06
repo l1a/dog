@@ -6,7 +6,7 @@ are delegated to [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns
 ## Workflow
 
 - `master` is the only long-lived branch. Open pull requests against it from short-lived branches named
-  `{feature,fix,chore}/<name>`.
+  `{feature,fix,chore,docs}/<name>`: `docs/` for a change that touches only documentation.
 - Write short, imperative commit subjects (50 characters or fewer).
 - **Every PR bumps the version in `Cargo.toml`**, with no exception for docs-only, test-only or CI-only changes. Which part
   to bump is explained in [Version numbers](#version-numbers-xyz) below. Commit `Cargo.lock` with it. The bump is past what

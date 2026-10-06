@@ -37,6 +37,8 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::wildcard_imports)]
 #![deny(unsafe_code)]
+// Standard output goes through `stdout`, which does not panic when the reader of a pipe goes away.
+#![deny(clippy::print_stdout)]
 
 use hickory_resolver::config::{NameServerConfig, ResolverConfig, ResolverOpts};
 use hickory_resolver::TokioResolver;
@@ -55,6 +57,7 @@ mod colours;
 mod hints;
 mod logger;
 mod output;
+mod stdout;
 mod table;
 
 mod options;
@@ -94,23 +97,23 @@ async fn main() {
 
         OptionsResult::Version(use_colours) => {
             if use_colours.should_use_colours() {
-                print!("{}", version_pretty());
+                stdout::emit(version_pretty());
             } else {
-                print!("{}", version_bland());
+                stdout::emit(version_bland());
             }
 
             exit(exits::SUCCESS);
         }
 
         OptionsResult::ListTypes => {
-            println!("{:<12} {:<40} Example", "Type", "Description");
+            stdout::emit_line(&format!("{:<12} {:<40} Example", "Type", "Description"));
             for info in all_record_types() {
-                println!(
+                stdout::emit_line(&format!(
                     "{:<12} {:<40} {}",
                     info.record_type.to_string(),
                     info.description,
                     info.example
-                );
+                ));
             }
             exit(exits::SUCCESS);
         }
@@ -121,14 +124,19 @@ async fn main() {
 
             let mut cmd = options::cli::build_cli();
 
+            // Generated into a buffer and written once: clap_complete panics if a write to the
+            // pipe fails, which `dog --completions bash | head -1` makes it do.
+            let mut buffer: Vec<u8> = Vec::new();
+
             if shell.eq_ignore_ascii_case("nushell") || shell.eq_ignore_ascii_case("nu") {
-                generate(Nushell, &mut cmd, "dog", &mut std::io::stdout());
+                generate(Nushell, &mut cmd, "dog", &mut buffer);
             } else if let Ok(s) = shell.parse::<Shell>() {
-                generate(s, &mut cmd, "dog", &mut std::io::stdout());
+                generate(s, &mut cmd, "dog", &mut buffer);
             } else {
                 eprintln!("dog: Unknown shell: {shell}");
                 exit(exits::OPTIONS_ERROR);
             }
+            stdout::emit_bytes(&buffer);
             exit(exits::SUCCESS);
         }
 
@@ -425,7 +433,7 @@ async fn run(
                 TransportType::HTTPS => "HTTPS",
             });
             let duration_ms = elapsed.as_secs_f64() * 1000.0;
-            println!("Query for {domain} {qtype} on {nameserver_str} ({transport}) finished in {duration_ms:.2}ms");
+            stdout::emit_line(&format!("Query for {domain} {qtype} on {nameserver_str} ({transport}) finished in {duration_ms:.2}ms"));
         }
 
         match result {
@@ -460,7 +468,7 @@ async fn run(
         let duration = timer.map(|t| t.elapsed());
         if let Some(duration) = duration {
             let duration_ms = duration.as_secs_f64() * 1000.0;
-            println!("Ran in {duration_ms:.2}ms");
+            stdout::emit_line(&format!("Ran in {duration_ms:.2}ms"));
         }
 
         if errored {
