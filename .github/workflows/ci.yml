@@ -136,7 +136,8 @@ jobs:
           cargo run --quiet -- --version
           cargo run --quiet -- --help > /dev/null
           for shell in bash zsh fish; do
-            cargo run --quiet -- --completions "$shell" | head -n 1 > /dev/null
+            out=$(cargo run --quiet -- --completions "$shell")
+            [ -n "$out" ] || { echo "no $shell completions"; exit 1; }
           done
 
   man:

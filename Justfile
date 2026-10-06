@@ -153,7 +153,7 @@ pr:
 
     # 1. A feature branch, never master.
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    [ "$BRANCH" = "master" ] && fail "On master: create a feature branch first (feature/, fix/ or chore/<name>)"
+    [ "$BRANCH" = "master" ] && fail "On master: create a feature branch first (feature/, fix/, chore/ or docs/<name>)"
     pass "Branch: $BRANCH"
 
     # 2. Everything committed, so what this gate checks is what gets pushed.

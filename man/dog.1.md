@@ -184,6 +184,8 @@ EXIT STATUSES
 3
 : If there was a problem with the command-line arguments.
 
+A closed output pipe, as in `dog example.com | head -n 1`, is not an error: dog stops quietly with status 0.
+
 
 AUTHOR
 ======
