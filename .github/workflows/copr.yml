@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: dnf -y install copr-cli git python3
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

@@ -50,7 +50,7 @@ jobs:
       code: ${{ steps.classify.outputs.code }}
       man: ${{ steps.classify.outputs.man }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - id: classify
         env:
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -105,7 +105,7 @@ jobs:
         if: matrix.container
         run: dnf install -y git gcc
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # dtolnay/rust-toolchain does not work inside a bare container, so Fedora uses rustup.
       - name: Install Rust (Fedora)
@@ -145,9 +145,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Install pandoc
         run: sudo apt-get update && sudo apt-get install -y pandoc
@@ -195,7 +195,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Verify the jobs this change needs ran, and that every job succeeded
         run: python3 scripts/ci_gate.py
