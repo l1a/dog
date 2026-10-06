@@ -2,9 +2,21 @@ name: CI
 
 # Runs on every PR to master and every push to master.
 #
-# There are deliberately NO `paths:` filters here. Branch protection requires the final
-# `CI OK` job, and a filtered-out workflow never reports a status, so a docs-only PR would
-# wait on a required check forever. The whole suite is cheap enough to run every time.
+# A docs-only PR does not run the full suite, but this is NOT done with `paths:` filters. Branch
+# protection requires the single `CI OK` job, and a workflow filtered out by `paths:` never reports
+# a status, so a docs-only PR would wait on a required check forever. Instead this workflow always
+# runs, a `changes` job classifies the PR's files (scripts/ci_changes.py), and `lints`, `test` and
+# `man` are skipped with `if:` when they are not needed. `CI OK` still runs every time, recomputes
+# the classification itself, and fails if a job this change needs was skipped, so a
+# misclassification cannot hide a skipped check (scripts/ci_gate.py).
+#
+#   docs-only  Markdown at the repository root, LICENSE, the screenshot, issue and PR templates:
+#              nothing is built or tested.
+#   man        man/ changed: only `Man page` runs.
+#   code       anything else, including every workflow file: the full suite runs.
+#
+# Only pull requests take the fast path. A push to master, a release (workflow_call) and a manual
+# run always run everything, and so does any doubt (an API error, an empty or truncated file list).
 
 on:
   push:
@@ -27,8 +39,31 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
+  changes:
+    name: Detect changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      man: ${{ steps.classify.outputs.man }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/ci_changes.py
+
   lints:
     name: Format and Clippy
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -49,6 +84,8 @@ jobs:
 
   test:
     name: Test (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     timeout-minutes: 30
@@ -103,6 +140,8 @@ jobs:
 
   man:
     name: Man page
+    needs: changes
+    if: needs.changes.outputs.man == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -122,69 +161,41 @@ jobs:
           grep -q '^\.TH' target/man/dog.1
           man -l target/man/dog.1 > /dev/null
 
-  # The single status check that branch protection requires.
+  # The single status check that branch protection requires. All of the logic is in
+  # scripts/ci_gate.py, which has a self-test and is documented there. In short:
   #
-  # This asks the API what every job in the run ACTUALLY concluded, and does not rely on
-  # `needs.*.result` alone. The original gate tested that for `cancelled`, but a job cancelled in
-  # the runner queue reports `abandoned`, so it passed a run whose Format and Clippy, Man page and
-  # Fedora jobs had all been cancelled (GitHub Actions outage, 2026-10-05). The run's own
-  # conclusion was correctly `failure`; only the job-level check was wrong, and branch protection
-  # trusts the job.
+  #   * it asks the API what every job ACTUALLY concluded, and does not rely on `needs.*.result`
+  #     alone: a job cancelled in the runner queue reports `abandoned`, which the original gate did
+  #     not recognise, so it passed a run whose jobs had all been cancelled (GitHub Actions outage,
+  #     2026-10-05);
+  #   * it recomputes the change classification itself, so a job a code change needs but that was
+  #     SKIPPED fails: that is how a misclassification would hide;
+  #   * it fails CLOSED: an API error, a job group missing from the run, a `changes` job that did
+  #     not succeed, or any result it does not recognise all fail it.
   #
-  # It fails CLOSED: an API error, an empty listing, or a missing group of jobs all fail it.
   # `if: always()` is still needed, or a failed dependency would SKIP this job and a skipped
   # required check counts as passing.
   ci-ok:
     name: CI OK
     if: always()
-    needs: [ lints, test, man ]
+    needs: [ changes, lints, test, man ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Lets the job read this run's job list. When release.yml calls this workflow, the caller
-    # must grant `actions: read` too, because a called workflow cannot widen its caller's token.
+    # Lets the job read this run's job list and the PR's file list. When release.yml calls this
+    # workflow, the caller must grant the same, because a called workflow cannot widen its caller's token.
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RUN_ID: ${{ github.run_id }}
-      NEEDS_RESULTS: ${{ join(needs.*.result, ' ') }}
+      EVENT_NAME: ${{ github.event_name }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
-      - name: Verify every job in this run succeeded
-        run: |
-          set -euo pipefail
+      - uses: actions/checkout@v6
 
-          # Anything other than `success` fails, not a list of known-bad words: a job cancelled in
-          # the runner queue reports `abandoned`, which is not `failure`, `cancelled` or `skipped`.
-          echo "needs results: ${NEEDS_RESULTS}"
-          for r in ${NEEDS_RESULTS}; do
-            if [ "$r" != "success" ]; then
-              echo "::error::a dependency ended as '${r}', not 'success' (${NEEDS_RESULTS})"
-              exit 1
-            fi
-          done
-
-          jobs=$(gh api --paginate "repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" \
-            --jq '.jobs[] | [.name, (.conclusion // .status)] | @tsv')
-          echo "jobs in this run:"
-          printf '%s\n' "$jobs"
-
-          # Judge only the jobs this workflow defines, and never this job itself. When another
-          # workflow calls this one, GitHub prefixes the names ("CI / Test (...)").
-          printf '%s\n' "$jobs" | awk -F'\t' '
-            $1 ~ /(^| \/ )Format and Clippy$/ { lints++; counted = 1 }
-            $1 ~ /(^| \/ )Man page$/           { man++;   counted = 1 }
-            $1 ~ /(^| \/ )Test \(.*\)$/        { tests++; counted = 1 }
-            counted {
-              if ($2 != "success") { bad++; printf "::error::%s concluded %s\n", $1, $2 }
-              counted = 0
-            }
-            END {
-              if (!lints || !man || !tests) {
-                printf "::error::expected lint, test and man jobs, found %d/%d/%d\n", lints, tests, man
-                exit 1
-              }
-              if (bad) exit 1
-              printf "all %d jobs succeeded\n", lints + man + tests
-            }'
+      - name: Verify the jobs this change needs ran, and that every job succeeded
+        run: python3 scripts/ci_gate.py
