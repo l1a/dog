@@ -31,7 +31,7 @@ jobs:
         if: github.ref_type == 'tag'
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          # A pre-release tag such as v0.7.0-rc.1 is allowed to carry a suffix the manifest lacks.
+          # A pre-release tag such as vX.Y.Z-rc.1 is allowed to carry a suffix the manifest lacks.
           tag="${GITHUB_REF_NAME#v}"
           base="${tag%%-*}"
           if [ "$base" != "$version" ]; then
@@ -54,6 +54,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
 
   man:
     name: Build man page
@@ -181,7 +182,7 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
-          # A tag with a suffix, such as v0.7.0-rc.1, is a pre-release.
+          # A tag with a suffix, such as vX.Y.Z-rc.1, is a pre-release.
           prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

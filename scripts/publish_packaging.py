@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Publish a released version to the AUR or the Homebrew tap.
 
-    publish_packaging.py aur  0.6.1     # ssh://aur@aur.archlinux.org/dogdns.git
-    publish_packaging.py brew 0.6.1     # git@github.com:l1a/homebrew-dog.git
-    publish_packaging.py brew 0.6.1 --dry-run
+    publish_packaging.py aur  X.Y.Z     # ssh://aur@aur.archlinux.org/dogdns.git
+    publish_packaging.py brew X.Y.Z     # git@github.com:l1a/homebrew-dog.git
+    publish_packaging.py brew X.Y.Z --dry-run
 
 Publishing is PUBLIC AND IMMEDIATE (an AUR push is what users install from), so this:
 

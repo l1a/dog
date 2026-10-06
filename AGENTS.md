@@ -33,22 +33,64 @@ The test suite covers:
 
 ## Versioning
 
-- **Every merged PR bumps `Cargo.toml`'s version.** No carve-out for docs-only, test-only or CI-only changes. **Patch** for
-  fixes, tests, docs, CI and dependency updates; **minor** for a new user-visible feature. This is the `etr`/`retch` rule
-  (`rusticprofile` uses patch for everything until 1.0, which does not apply here). Commit `Cargo.lock` with the bump.
+### Version numbers: X.Y.Z (MAJOR.MINOR.PATCH)
+
+`Cargo.toml`'s version is `X.Y.Z`, [semantic versioning](https://semver.org). **Bump exactly one part per PR, the highest that
+applies**, and reset every part to its right to 0.
+
+| Part | Name | Bump it when | Resets |
+|---|---|---|---|
+| **Z** | PATCH | the PR changes nothing a user can newly do and no correct invocation could notice: a bug fix, tests, docs, CI, packaging, a refactor, a dependency update | nothing |
+| **Y** | MINOR | the PR adds something a user can see and nothing breaks: a new flag or option, record type, output mode, transport, platform archive or install channel. **While X is 0, also any breaking change** | Z to 0 |
+| **X** | MAJOR | the PR breaks the public interface, **from 1.0.0 on**. While X is 0 it is reserved: the move to `1.0.0` is a deliberate decision by the maintainer to declare the interface stable, never a side effect of a PR | Y and Z to 0 |
+
+Examples: `0.7.3` + a fix is `0.7.4`. `0.7.3` + a new flag is `0.8.0`. `0.7.3` + a renamed flag is `0.8.0` (breaking, pre-1.0).
+`1.4.2` + a renamed flag is `2.0.0`. `1.4.2` + a new flag is `1.5.0`. `1.4.2` + a fix is `1.4.3`.
+
+**What "the interface" is.** `dog` is a command-line tool, so the interface is what a user or a script can depend on:
+- the flags, options and arguments, and their meaning and defaults;
+- the output: the text format and, above all, the **`--json` shape** (key names and nesting);
+- the exit codes;
+- what is installed: the `dog` binary, its man page and the shell completions.
+
+It is **not** the Rust code (the crate is a binary, not a library), the dependencies, CI, the docs, or how a package is built.
+
+**How to decide, in order, stopping at the first yes:**
+1. *Could an invocation or script that worked on the previous release now break or behave differently on purpose?* Removing or
+   renaming a flag, changing a JSON key or its structure, changing an exit code, changing a default that scripts rely on.
+   That is **breaking**: Y while X is 0, X from 1.0.0. Say `BREAKING:` in the PR title and description.
+2. *Can a user now do something they could not, or see something new?* A new flag, record type, output mode, transport, or a
+   new platform or install channel. That is **Y**.
+3. *Otherwise* (a fix, tests, docs, CI, packaging, a refactor, a dependency update): **Z**.
+
+A bug fix is a **patch even when it changes output**, if the old output was wrong: the interface did not change, the program now
+does what it already claimed to. A dependency update is a patch even when the dependency's own version jumped, unless it changes
+something a user sees, in which case it follows the questions above.
+
+**Pre-release tags.** `vX.Y.Z-rc.N` is published as a pre-release. The suffix lives only on the tag; `Cargo.toml` keeps `X.Y.Z`.
+
+### The rule
+
+- **Every merged PR bumps `Cargo.toml`'s version.** No carve-out for docs-only, test-only or CI-only changes: those are patch
+  bumps. Which part to bump is decided as above. This is the `etr`/`retch` rule (`rusticprofile` uses patch for everything until
+  1.0, which does not apply here). Commit `Cargo.lock` with the bump.
 - **A release needs no bump.** After a tag, `master` stays at the released version and the next PR bumps it. That is why the
   packaging templates record no version: nothing has to be updated after a release, and nothing can fall behind one.
 - **The bump is checked against `master`, not only the last tag** (`scripts/version_gate.py --base origin/master`). The
   siblings compare only with the tag, which lets two PRs bump to the same number and neither notice that the second added
-  nothing. The check is numeric per component (0.10.0 is past 0.9.0), and requires `Cargo.lock` to agree, because every build and
+  nothing. The check is numeric per component (`0.10.0` is past `0.9.0`), and requires `Cargo.lock` to agree, because every build and
   every packaging channel uses `--locked` and the `v0.6.0` tag shipped with a stale lockfile (`0.5.7`).
 - **Dependabot PRs are not merged.** They close by themselves once `master` carries the update. We open our own PR to resolve
   what Dependabot found, and that PR follows this process, bump included. The same goes for any other auto-generated PR.
 - **How it is enforced** (a Justfile recipe and a hook, not agent configuration, so it binds a human, Claude and Gemini alike):
-  - `just pr` is the pre-PR gate: feature branch, clean tree, version bump, packaging templates, `cargo build --locked`,
-    `just` (fmt, clippy `--all-targets`, tests), an advisory `cargo audit`, then a manual checklist answered by typing `y` or by
-    `PR_CONFIRM=y` for a non-interactive caller (only after actually checking each item).
-  - **`just open-pr` instead of `gh pr create`**: it runs the gate, then `gh pr create --repo l1a/dog --base master`.
+  - `just pr` is the pre-PR gate: feature branch, clean tree, version bump, the scripts' self-tests (`just scripts-check`, which
+    include the packaging templates), `cargo build --locked`, `just` (fmt, clippy `--all-targets`, tests), an advisory
+    `cargo audit`, then a manual checklist answered by typing `y` or by `PR_CONFIRM=y` for a non-interactive caller (only after
+    actually checking each item).
+  - **`just open-pr` instead of `gh pr create`**: it runs the gate, then `gh pr create --repo l1a/dog --base master "$@"`. Pass a
+    multi-line body with `--body-file`. The arguments reach `gh` intact because the recipe uses `[positional-arguments]` and `"$@"`:
+    `{{ARGS}}` joins them with spaces and no quoting, so a title with spaces became several words and a backtick in the body
+    **ran as a command**.
   - `just merge-pr` refuses to merge unless every check is `SUCCESS` on the PR's current head (no checks at all is not green).
     Run it only when merging has been authorised.
   - `just install-hooks` installs a `pre-push` hook that runs fmt and clippy; skip once with `GIT_NO_CHECK=1`.
@@ -64,21 +106,34 @@ The test suite covers:
 - **`just` is the local mirror of CI.** `just` = build + `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + tests.
   Run it before pushing. A new Rust release can add lints, so `master` can go red with no code change.
 - **`.github/workflows/ci.yml`** runs on every PR and push to `master`: format and clippy, tests on Linux (x86_64, aarch64,
-  Fedora), macOS and Windows (x86_64, aarch64), and a man-page build. **It has no `paths:` filter on purpose**: branch
-  protection requires the single `CI OK` job, and a filtered-out workflow never reports, which would block docs-only PRs.
-  `CI OK` uses `if: always()` because a *skipped* required check counts as passing.
-- **`CI OK` asks the API what every job concluded; it does not trust `needs.*.result`.** During a GitHub Actions outage
-  (2026-10-05) it passed a run whose Format and Clippy, Man page and Fedora jobs were all *cancelled*. The cause: a job
-  cancelled in the runner queue reports `abandoned` in `needs.*.result`, not `cancelled`, so `contains(..., 'cancelled')` was
-  false. The run's own conclusion was correctly `failure`; only the job-level check was wrong, and branch protection trusts the
-  job. The gate now lists the run's jobs, fails on any that is not `success`, and fails closed on an API error or a missing
-  lint/test/man group. It still cross-checks `needs`, rejecting **anything other than `success`** rather than a list of known-bad
-  words (`failure`, `cancelled`, `skipped` and `abandoned` are all different strings). When
-  `release.yml` calls `ci.yml`, the caller must grant `actions: read`, because a called workflow cannot widen its caller's
-  token (job names then carry a `CI / ` prefix, which the gate allows for).
-- **Test a CI gate against the real failure, not against a green run.** The gate step was exercised under a fake `gh` that
-  replays saved job lists from the false-green run and a genuinely green one. A gate that has only ever seen green runs has
-  not been shown to fail.
+  Fedora), macOS and Windows (x86_64, aarch64), and a man-page build.
+- **A docs-only PR skips the full suite, but not with `paths:` filters.** Branch protection requires the single `CI OK` job, and a
+  workflow filtered out by `paths:` never reports a status, so the PR would wait on a required check forever. Instead a `changes`
+  job (`scripts/ci_changes.py`) classifies the PR's files and `lints`, `test` and `man` are skipped with `if:`; `CI OK` always runs.
+  - **docs-only**: every changed file is Markdown at the repository root, `LICENSE`, the screenshot, or an issue or PR template.
+    Nothing is built or tested.
+  - **man**: `man/` changed. Only `Man page` runs (pandoc is the one thing a `man/` change can break).
+  - **code**: anything else, including `Cargo.toml`, `Cargo.lock`, `src/`, `scripts/`, `packaging/`, **every workflow file**, and
+    Markdown in a subdirectory (a build input: `man/dog.1.md`, `packaging/**/*.md`). The full suite runs.
+  - **Only pull requests take the fast path.** A push to `master`, a release (`workflow_call`), a manual run, and any doubt (an API
+    error, an empty or truncated file list) run everything. A rename counts both the old and the new name, so moving a code file to
+    a docs path does not read as docs-only. `version.yml` still runs on docs-only PRs, because the rule has no carve-out.
+- **`CI OK` is `scripts/ci_gate.py`.** It asks the API what every job concluded and does not trust `needs.*.result` alone. During a
+  GitHub Actions outage (2026-10-05) the original gate passed a run whose Format and Clippy, Man page and Fedora jobs were all
+  *cancelled*: a job cancelled in the runner queue reports **`abandoned`**, not `cancelled`, so `contains(..., 'cancelled')` was
+  false. The run's own conclusion was correctly `failure`; only the job-level check was wrong, and branch protection trusts the job.
+  It **recomputes the change classification itself** rather than trusting the `changes` job, and checks the jobs that class needs:
+  - **code**: all three groups must be exactly `success`. A job the change needs that was *skipped* fails: that is how a
+    misclassification would hide.
+  - **man**: `Man page` must succeed; the others may be skipped. **docs-only**: all may be skipped.
+  - Anything else fails: `failure`, `cancelled`, `abandoned`, a job group missing from the run, a `changes` job that did not succeed,
+    an API error, or any result it does not recognise. `if: always()` is needed because a *skipped* required check counts as passing.
+  When `release.yml` calls `ci.yml` the caller must grant `actions: read` **and `pull-requests: read`**, because a called workflow
+  cannot widen its caller's token (job names then carry a `CI / ` prefix, which the gate allows for).
+- **Test a CI gate against the real failure, not against a green run.** `ci_gate.py` and `ci_changes.py` have self-tests with the
+  incident data in them, and the whole flow (23 cases: the fast paths, a rename hiding a code file, an API error, a push, and the
+  incident replayed) was run through their real entry points under a fake `gh`. A gate that has only ever seen green runs has not been
+  shown to fail. Every case must name the message it expects, or it can pass for an unrelated reason.
 - **`timeout-minutes` bounds a job that is running and hung. It does not count time spent waiting for a runner**, so it cannot
   shorten a stall in GitHub's queue (about 15 minutes before the job is cancelled). Rerun cancelled jobs once the queue clears.
 - **`security.yml`** runs `cargo audit` on dependency changes and weekly.

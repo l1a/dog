@@ -72,6 +72,13 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 @packaging-check:
     python3 scripts/render_packaging.py --self-test
 
+# run the self-tests of every project script: the renderer, the version gate, and the CI change classifier and gate
+@scripts-check:
+    python3 scripts/render_packaging.py --self-test
+    python3 scripts/version_gate.py --self-test
+    python3 scripts/ci_changes.py --self-test
+    python3 scripts/ci_gate.py --self-test
+
 # publish a released version to the AUR (public and immediate: you must type the version to confirm)
 @publish-aur version:
     python3 scripts/publish_packaging.py aur "{{version}}"
@@ -152,9 +159,10 @@ pr:
     grep -E '^(Cargo|version)' /tmp/version-gate.$$ | sed 's/^/    /'; rm -f /tmp/version-gate.$$
     pass "Version bumped"
 
-    # 4. Packaging templates still render and still record nothing.
-    just packaging-check > /dev/null
-    pass "Packaging templates"
+    # 4. The scripts' self-tests, which include the packaging templates still rendering and
+    #    still recording nothing.
+    just scripts-check > /dev/null
+    pass "Script self-tests and packaging templates"
 
     # 5. The lockfile builds as committed (CI and every packaging channel use --locked).
     info "cargo build --locked..."
@@ -200,7 +208,12 @@ pr:
         [ -n "$CONFIRM" ] || fail "No terminal to confirm the checklist on. Re-run with PR_CONFIRM=y once each item above is actually checked."
     fi
     [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ] || fail "Complete the checklist first."
-    echo -e "\n${GREEN}Gate passed. Open the PR with: just open-pr --title \"...\" --body \"...\"${NC}\n"
+    # `just open-pr` sets OPEN_PR and opens the PR itself, so telling it to run open-pr would be noise.
+    if [ -n "${OPEN_PR:-}" ]; then
+        echo -e "\n${GREEN}Gate passed.${NC}\n"
+    else
+        echo -e "\n${GREEN}Gate passed. Open the PR with: just open-pr --title \"...\" --body-file <file>${NC}\n"
+    fi
 
 # gh has no hook of its own to gate `gh pr create`, so this is the one call site that can.
 # --repo is explicit because this repository is a fork of ogham/dog, and a bare `gh pr create`
@@ -210,7 +223,7 @@ pr:
 open-pr *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
-    just pr
+    OPEN_PR=1 just pr
     # "$@", not {{ARGS}}: just joins a variadic argument with spaces and no quoting, so a title with
     # spaces would reach gh as several words. positional-arguments passes each argument through intact.
     gh pr create --repo l1a/dog --base master "$@"

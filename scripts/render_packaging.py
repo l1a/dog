@@ -19,7 +19,7 @@ No network: a checksum is computed by the caller from the artifact it actually d
 passed in with --sha256. That keeps `--self-test` runnable anywhere.
 
     render_packaging.py --print-version
-    render_packaging.py --target copr --version 0.6.0 --out build/dog.spec
+    render_packaging.py --target copr --version X.Y.Z --out build/dog.spec
     render_packaging.py --self-test
 """
 

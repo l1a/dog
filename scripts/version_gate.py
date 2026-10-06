@@ -6,9 +6,10 @@
     version_gate.py                          # lockfile and last-tag checks only
     version_gate.py --self-test
 
-THE RULE: every merged PR bumps `Cargo.toml`'s version, with no carve-out for docs-only,
-test-only or CI-only changes. Use a PATCH bump for fixes, tests, docs, CI and dependency
-updates, and a MINOR bump for a new user-visible feature. A release needs no bump of its own:
+THE RULE: every merged PR bumps `Cargo.toml`'s version (X.Y.Z), with no carve-out for docs-only,
+test-only or CI-only changes. Which part to bump (a fix is Z, a new user-visible feature is Y, a
+breaking change is Y before 1.0.0 and X after) is explained in AGENTS.md, "Version numbers: X.Y.Z".
+This script checks that a bump happened, not that it was the right kind. A release needs no bump of its own:
 after a tag, master stays at the released version and the next PR does the bumping, which is
 also why the packaging templates record no version.
 
@@ -18,7 +19,7 @@ WHAT IS CHECKED, and why each one exists:
      so a bump that leaves the lockfile behind fails there, and the v0.6.0 tag shipped exactly
      that way (its lockfile said 0.5.7), which made it unbuildable by any --locked channel.
   2. The version is strictly past the BASE ref's (master's). Comparing only with the last tag,
-     as the sibling projects do, lets two PRs both bump to 0.7.1 and neither notice that the
+     as the sibling projects do, lets two PRs both bump to the same number and neither notice that the
      second one added nothing.
   3. The version is strictly past the last tag. Without a base ref this is all there is to
      compare with.
