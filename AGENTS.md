@@ -104,7 +104,7 @@ something a user sees, in which case it follows the questions above.
 
 ## Source control and CI
 
-- **Trunk on `master`.** Short-lived `{feature,fix,chore,docs}/<name>` branches (`docs/` for a change that touches only documentation) are PR'd into `master`. The old `dev` and
+- **Trunk on `master`.** Short-lived `{feature,fix,chore,docs}/<name>` branches (`docs/` for a change that touches only documentation; `just pr` enforces the names and that rule, via `scripts/branch_gate.py`) are PR'd into `master`. The old `dev` and
   `dependabot` branches are retired; Dependabot targets `master`.
 - **`just` is the local mirror of CI.** `just` = build + `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + tests.
   Run it before pushing. A new Rust release can add lints, so `master` can go red with no code change.

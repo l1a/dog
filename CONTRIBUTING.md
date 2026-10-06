@@ -6,7 +6,9 @@ are delegated to [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns
 ## Workflow
 
 - `master` is the only long-lived branch. Open pull requests against it from short-lived branches named
-  `{feature,fix,chore,docs}/<name>`: `docs/` for a change that touches only documentation.
+  `{feature,fix,chore,docs}/<name>`: `docs/` for a change that touches only documentation. `just pr` enforces both: it
+  refuses any other name, and refuses a `docs/` branch that changes anything but documentation (the same classification CI uses for
+  the docs-only fast path, so the required version bump does not count against it).
 - Write short, imperative commit subjects (50 characters or fewer).
 - **Every PR bumps the version in `Cargo.toml`**, with no exception for docs-only, test-only or CI-only changes. Which part
   to bump is explained in [Version numbers](#version-numbers-xyz) below. Commit `Cargo.lock` with it. The bump is past what
