@@ -42,10 +42,12 @@ The test suite covers:
   protection requires the single `CI OK` job, and a filtered-out workflow never reports, which would block docs-only PRs.
   `CI OK` uses `if: always()` because a *skipped* required check counts as passing.
 - **`CI OK` asks the API what every job concluded; it does not trust `needs.*.result`.** During a GitHub Actions outage
-  (2026-10-05) that expression evaluated to false in a run whose Format and Clippy, Man page and Fedora jobs were all
-  *cancelled*, so the gate passed a run it should have failed. The run's own conclusion was correctly `failure`; only the
-  job-level check was wrong, and branch protection trusts the job. The gate now lists the run's jobs, fails on any that is
-  not `success`, and fails closed on an API error or a missing lint/test/man group. It still cross-checks `needs`. When
+  (2026-10-05) it passed a run whose Format and Clippy, Man page and Fedora jobs were all *cancelled*. The cause: a job
+  cancelled in the runner queue reports `abandoned` in `needs.*.result`, not `cancelled`, so `contains(..., 'cancelled')` was
+  false. The run's own conclusion was correctly `failure`; only the job-level check was wrong, and branch protection trusts the
+  job. The gate now lists the run's jobs, fails on any that is not `success`, and fails closed on an API error or a missing
+  lint/test/man group. It still cross-checks `needs`, rejecting **anything other than `success`** rather than a list of known-bad
+  words (`failure`, `cancelled`, `skipped` and `abandoned` are all different strings). When
   `release.yml` calls `ci.yml`, the caller must grant `actions: read`, because a called workflow cannot widen its caller's
   token (job names then carry a `CI / ` prefix, which the gate allows for).
 - **Test a CI gate against the real failure, not against a green run.** The gate step was exercised under a fake `gh` that
