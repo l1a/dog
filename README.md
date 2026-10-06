@@ -153,3 +153,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks the project runs (`just`).
 
 dog’s source code is licensed under the [GNU General Public License v3.0](https://choosealicense.com/licenses/gpl-3.0/).
 *(Original upstream code by Benjamin Sago licensed under EUPL-1.2).*
+
+<!-- fast-path test: this PR is closed unmerged -->
