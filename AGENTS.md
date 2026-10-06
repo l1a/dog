@@ -168,8 +168,11 @@ something a user sees, in which case it follows the questions above.
 - **`cargo audit` runs in three places:** `security.yml` in CI (push to `master`, PRs touching `Cargo.toml` or `Cargo.lock`, **weekly on
   Sundays**, manually), which fails on vulnerabilities but not on warnings (unmaintained, unsound, yanked); `just pr`, advisory and only
   if `cargo-audit` is installed; and by hand. It is **not** part of `CI OK`, so it informs and does not block a merge.
-- **Watch:** `datetime` (a build dependency used only to stamp the build date) was last released 2021-04-01. No advisory names it.
-  `edition = "2018"` is old but not a dependency.
+- **`datetime` was removed (2021-04-01 was its last release, no advisory named it).** It was a build dependency whose only use was a
+  build date, reachable only for a release build with a `-pre` version, which `version_gate.py` rejects, so it was dead code. The
+  `--version` string is now just the version, plus a warning on debug builds: no Git hash and no build date, so a build does not need
+  `git` and two builds of one source print the same string. If a date is ever wanted again, use `std` or `jiff`, not a stale crate.
+- `edition = "2018"` is old but is not a dependency.
 
 ## Packaging
 

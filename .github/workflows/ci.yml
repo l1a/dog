@@ -100,7 +100,8 @@ jobs:
           - { name: windows-x86_64, os: windows-latest }
           - { name: windows-aarch64, os: windows-11-arm }
     steps:
-      # build.rs shells out to `git`, and the Fedora image does not ship it.
+      # gcc: ring compiles C. git: build.rs no longer needs it, but actions/checkout clones with it when
+      # present (and only downloads an archive without it), and the Fedora image does not ship it.
       - name: Install dependencies (Fedora)
         if: matrix.container
         run: dnf install -y git gcc

@@ -18,7 +18,7 @@ exclude = [
     "/AGENTS.md", "/CLAUDE.md", "/CONTRIBUTING.md", "/.rustfmt.toml",
 ]
 license = "GPL-3.0-or-later"
-version = "0.7.4"
+version = "0.7.5"
 
 
 [[bin]]
@@ -69,7 +69,6 @@ ipconfig = { version = "0.3" }
 clap = "4"
 clap_complete = "4.6.2"
 clap_complete_nushell = "4.6.0"
-datetime = { version = "0.5.2", default-features = false }
 
 [dev-dependencies]
 pretty_assertions = "1.4"
