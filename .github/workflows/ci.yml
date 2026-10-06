@@ -124,11 +124,12 @@ jobs:
 
   # The single status check that branch protection requires.
   #
-  # This asks the API what every job in the run ACTUALLY concluded instead of trusting
-  # `needs.*.result`. That expression once evaluated to false in a run whose Format and Clippy,
-  # Man page and Fedora jobs were all cancelled, so the gate passed a run it should have failed
-  # (GitHub Actions outage, 2026-10-05). The run's own conclusion was correctly `failure`; only
-  # the job-level expression was wrong, and branch protection trusts the job.
+  # This asks the API what every job in the run ACTUALLY concluded, and does not rely on
+  # `needs.*.result` alone. The original gate tested that for `cancelled`, but a job cancelled in
+  # the runner queue reports `abandoned`, so it passed a run whose Format and Clippy, Man page and
+  # Fedora jobs had all been cancelled (GitHub Actions outage, 2026-10-05). The run's own
+  # conclusion was correctly `failure`; only the job-level check was wrong, and branch protection
+  # trusts the job.
   #
   # It fails CLOSED: an API error, an empty listing, or a missing group of jobs all fail it.
   # `if: always()` is still needed, or a failed dependency would SKIP this job and a skipped
@@ -154,13 +155,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Anything other than `success` fails, not a list of known-bad words: a job cancelled in
+          # the runner queue reports `abandoned`, which is not `failure`, `cancelled` or `skipped`.
           echo "needs results: ${NEEDS_RESULTS}"
-          case " ${NEEDS_RESULTS} " in
-            *" failure "*|*" cancelled "*|*" skipped "*)
-              echo "::error::a dependency did not succeed (${NEEDS_RESULTS})"
+          for r in ${NEEDS_RESULTS}; do
+            if [ "$r" != "success" ]; then
+              echo "::error::a dependency ended as '${r}', not 'success' (${NEEDS_RESULTS})"
               exit 1
-              ;;
-          esac
+            fi
+          done
 
           jobs=$(gh api --paginate "repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?per_page=100" \
             --jq '.jobs[] | [.name, (.conclusion // .status)] | @tsv')
