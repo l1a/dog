@@ -12,6 +12,7 @@ on:
       - 'packaging/**'
       - '.copr/**'
       - 'scripts/render_packaging.py'
+      - 'scripts/publish_packaging.py'
       - 'man/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -92,3 +93,66 @@ jobs:
           rpm -ivh --nodeps "$rpm"
           version=$(python3 scripts/render_packaging.py --print-version)
           dog --version | tee /dev/stderr | grep -q "v$version"
+
+  aur:
+    name: AUR (Arch)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 15
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm git python
+
+      - uses: actions/checkout@v6
+
+      # .SRCINFO is what the AUR actually reads, and it restates the PKGBUILD's version and
+      # checksum. Hand-maintaining that agreement is the classic AUR footgun, so prove the
+      # rendered pair agrees with what makepkg itself generates from the PKGBUILD.
+      - name: Render PKGBUILD and .SRCINFO
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/aur
+          sha=$(python3 -c 'print("0" * 64)')
+          python3 scripts/render_packaging.py --target aur-pkgbuild --version 0.0.1 --sha256 "$sha" --out /tmp/aur/PKGBUILD
+          python3 scripts/render_packaging.py --target aur-srcinfo  --version 0.0.1 --sha256 "$sha" --out /tmp/aur/SRCINFO.rendered
+
+      # makepkg refuses to run as root, which is what a container job is.
+      - name: .SRCINFO matches what makepkg generates
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          chown -R builder /tmp/aur
+          su builder -c 'cd /tmp/aur && makepkg --printsrcinfo > SRCINFO.generated'
+          diff -u /tmp/aur/SRCINFO.rendered /tmp/aur/SRCINFO.generated
+          echo ".SRCINFO matches"
+
+  homebrew:
+    name: Homebrew formula
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: Homebrew/actions/setup-homebrew@main
+
+      # Homebrew only installs a formula from a tap, so make a throwaway one. --HEAD builds from
+      # the master branch and ignores the url and checksum, which is what lets a PR test the
+      # formula before any tag exists. The rendered values are placeholders and are never used.
+      - name: Render the formula into a local tap
+        run: |
+          set -euo pipefail
+          brew tap-new l1a/test --no-git
+          sha=$(python3 -c 'print("0" * 64)')
+          python3 scripts/render_packaging.py --target brew --version 0.0.1 --sha256 "$sha" \
+            --out "$(brew --repository l1a/test)/Formula/dog.rb"
+
+      - name: Audit
+        run: brew audit --strict --formula l1a/test/dog
+
+      # This builds the code on this branch's master with Homebrew's Rust, then installs it.
+      - name: Install from source
+        run: brew install --HEAD --verbose l1a/test/dog
+
+      # Runs the formula's own `test do` block.
+      - name: Test
+        run: brew test l1a/test/dog

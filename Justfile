@@ -72,6 +72,14 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 @packaging-check:
     python3 scripts/render_packaging.py --self-test
 
+# publish a released version to the AUR (public and immediate: you must type the version to confirm)
+@publish-aur version:
+    python3 scripts/publish_packaging.py aur {{version}}
+
+# publish a released version to the Homebrew tap (public and immediate: you must type the version to confirm)
+@publish-brew version:
+    python3 scripts/publish_packaging.py brew {{version}}
+
 # lint the code
 @clippy:
     cargo clippy --all-targets -- -D warnings

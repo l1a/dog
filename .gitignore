@@ -4,3 +4,4 @@ fuzz-*.log
 /cargo-timing*.html
 /.copr-build
 /.copr-sources
+__pycache__/

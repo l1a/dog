@@ -1,10 +1,9 @@
 # COPR spec for dog (https://copr.fedorainfracloud.org/coprs/kentobias/dog/).
 #
-# THIS IS A TEMPLATE. Version: and the %changelog entry are sentinels filled in by
-# scripts/render_packaging.py when .copr/Makefile builds the SRPM, so the version comes from
-# Cargo.toml in the checkout COPR cloned and nothing in this file records a release. Recording
-# one is the mistake: it would have to be bumped by hand after every tag, and a stale value
-# builds the wrong release without any error.
+# Rendered by scripts/render_packaging.py from packaging/copr/dog.spec when .copr/Makefile builds
+# the SRPM: Version: and the %changelog entry come from Cargo.toml in the checkout COPR cloned, so
+# nothing in the repository records a release. Recording one is the mistake: it would have to be
+# bumped by hand after every tag, and a stale value builds the wrong release without any error.
 #
 # Source0 is a LOCAL tarball that .copr/Makefile builds from that checkout, not a tag URL, so
 # a PR can build its own SRPM and the package is the code COPR actually cloned.
