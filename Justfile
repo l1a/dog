@@ -155,7 +155,7 @@ pr:
     # 3. The version is bumped past master and the last tag, and Cargo.lock agrees.
     info "Checking the version bump..."
     git fetch -q origin master
-    python3 scripts/version_gate.py --base {{base}} > /tmp/version-gate.$$ 2>&1 || { cat /tmp/version-gate.$$; rm -f /tmp/version-gate.$$; fail "Version not bumped (patch for fixes/tests/docs/CI/deps, minor for new features)"; }
+    python3 scripts/version_gate.py --base {{base}} > /tmp/version-gate.$$ 2>&1 || { cat /tmp/version-gate.$$; rm -f /tmp/version-gate.$$; fail "Version not bumped past master and the last tag (Z for fixes/tests/docs/CI/deps, Y for new features; see CONTRIBUTING.md, Version numbers)"; }
     grep -E '^(Cargo|version)' /tmp/version-gate.$$ | sed 's/^/    /'; rm -f /tmp/version-gate.$$
     pass "Version bumped"
 
@@ -185,7 +185,8 @@ pr:
 
     echo -e "\n${BOLD}Automated checks passed.${NC}\n"
     echo -e "${BOLD}Manual checklist: confirm each before opening the PR:${NC}"
-    echo "  [ ] The bump is the right kind: patch for fixes/tests/docs/CI/dependency updates, minor for a new user-visible feature"
+    echo "  [ ] The bump is the right part of X.Y.Z: Z for fixes/tests/docs/CI/dependency updates, Y for a new user-visible feature,"
+    echo "      and a breaking change is Y before 1.0.0 and X after (CONTRIBUTING.md, Version numbers)"
     echo "  [ ] README.md and man/dog.1.md reviewed (new flags, behaviour, install channels)"
     echo "  [ ] AGENTS.md / CONTRIBUTING.md updated if the workflow, CI or packaging changed (in THIS PR, not later)"
     echo "  [ ] Packaging templates changed? then they were built for real (see AGENTS.md, Packaging)"
@@ -227,6 +228,23 @@ open-pr *ARGS:
     # "$@", not {{ARGS}}: just joins a variadic argument with spaces and no quoting, so a title with
     # spaces would reach gh as several words. positional-arguments passes each argument through intact.
     gh pr create --repo l1a/dog --base master "$@"
+
+# GitHub deletes a PR's remote branch when it merges (the repository setting is on), but never your
+# local one, so merged branches pile up here, each marked [gone]. `just merge-pr` removes the branch it
+# merges; this clears the rest. A branch is kept, with a message, if it is not merged into HEAD.
+# delete local branches whose remote branch is gone, if they are merged
+prune-branches:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git fetch --prune -q origin
+    current=$(git rev-parse --abbrev-ref HEAD)
+    gone=$(git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads | awk '$2=="[gone]"{print $1}')
+    if [ -z "$gone" ]; then echo "No local branches with a deleted remote branch."; exit 0; fi
+    [ "$current" = "master" ] || echo "Note: you are on $current, not master; a branch is kept unless it is merged into this one."
+    for b in $gone; do
+        if [ "$b" = "$current" ]; then echo "kept     $b (checked out)"; continue; fi
+        if git branch -d "$b" > /dev/null 2>&1; then echo "deleted  $b"; else echo "KEPT     $b (not merged: git branch -D $b to force)"; fi
+    done
 
 # Run this ONLY when merging has been authorised. `gh pr merge` merges a red PR happily, and
 # "the checks have settled" is not "the checks passed". No checks at all is not green either,
