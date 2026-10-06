@@ -8,7 +8,15 @@ are delegated to [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns
 - `master` is the only long-lived branch. Open pull requests against it from short-lived branches named
   `{feature,fix,chore}/<name>`.
 - Write short, imperative commit subjects (50 characters or fewer).
-- Every PR must pass the `CI OK` check before it is merged.
+- **Every PR bumps the version in `Cargo.toml`**, with no exception for docs-only, test-only or CI-only changes: a
+  **patch** bump for fixes, tests, docs, CI and dependency updates, a **minor** bump for a new user-visible feature.
+  Commit `Cargo.lock` with it. The bump is past what `master` currently has, not only past the last tag.
+- Open PRs with `just open-pr`, never `gh pr create` directly. It runs `just pr` first: the version check, a locked
+  build, fmt, clippy, the tests, an advisory audit, and a checklist. Run `just install-hooks` once per clone for a
+  `pre-push` hook that runs fmt and clippy.
+- Every PR must pass the `CI OK` check before it is merged. The `Version bumped` job is advisory.
+- Dependabot's own PRs are not merged: they close by themselves once `master` carries the update. Open your own PR
+  to resolve what it found, and that PR bumps the version like any other.
 
 ## Running the checks locally
 
@@ -40,8 +48,10 @@ in a Fedora container, so a spec that parses but cannot build fails on the PR an
 
 ## Releases
 
-1. Bump `version` in `Cargo.toml`, run `cargo build` so `Cargo.lock` follows, and merge that to `master`.
-2. Tag the merge commit and push the tag: `git tag v0.7.0 && git push origin v0.7.0`.
+1. **A release needs no bump of its own.** The last PR to merge already bumped the version, so `master` is at the version
+   to release. Check with `just version-check`: it should report a bump past the previous tag.
+2. Tag the tip of `master` and push the tag: `git tag v0.7.0 && git push origin v0.7.0`. After the tag, `master` stays
+   at that version until the next PR bumps it.
 3. The `Release` workflow checks the tag against `Cargo.toml` and `Cargo.lock`, runs the full CI suite, then builds
    Linux (x86_64, aarch64), macOS (aarch64) and Windows (x86_64, aarch64) archives. Each holds the binary, the man
    page, shell completions, `LICENSE` and `README.md`. It publishes them with a `SHA256SUMS` file.

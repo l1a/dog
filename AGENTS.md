@@ -31,6 +31,32 @@ The test suite covers:
 
 *Note: The original `dog` integration test suite (`xtests/`) and `dns/` wire format parsing tests are no longer applicable as parsing is entirely delegated to `hickory-resolver`.*
 
+## Versioning
+
+- **Every merged PR bumps `Cargo.toml`'s version.** No carve-out for docs-only, test-only or CI-only changes. **Patch** for
+  fixes, tests, docs, CI and dependency updates; **minor** for a new user-visible feature. This is the `etr`/`retch` rule
+  (`rusticprofile` uses patch for everything until 1.0, which does not apply here). Commit `Cargo.lock` with the bump.
+- **A release needs no bump.** After a tag, `master` stays at the released version and the next PR bumps it. That is why the
+  packaging templates record no version: nothing has to be updated after a release, and nothing can fall behind one.
+- **The bump is checked against `master`, not only the last tag** (`scripts/version_gate.py --base origin/master`). The
+  siblings compare only with the tag, which lets two PRs bump to the same number and neither notice that the second added
+  nothing. The check is numeric per component (0.10.0 is past 0.9.0), and requires `Cargo.lock` to agree, because every build and
+  every packaging channel uses `--locked` and the `v0.6.0` tag shipped with a stale lockfile (`0.5.7`).
+- **Dependabot PRs are not merged.** They close by themselves once `master` carries the update. We open our own PR to resolve
+  what Dependabot found, and that PR follows this process, bump included. The same goes for any other auto-generated PR.
+- **How it is enforced** (a Justfile recipe and a hook, not agent configuration, so it binds a human, Claude and Gemini alike):
+  - `just pr` is the pre-PR gate: feature branch, clean tree, version bump, packaging templates, `cargo build --locked`,
+    `just` (fmt, clippy `--all-targets`, tests), an advisory `cargo audit`, then a manual checklist answered by typing `y` or by
+    `PR_CONFIRM=y` for a non-interactive caller (only after actually checking each item).
+  - **`just open-pr` instead of `gh pr create`**: it runs the gate, then `gh pr create --repo l1a/dog --base master`.
+  - `just merge-pr` refuses to merge unless every check is `SUCCESS` on the PR's current head (no checks at all is not green).
+    Run it only when merging has been authorised.
+  - `just install-hooks` installs a `pre-push` hook that runs fmt and clippy; skip once with `GIT_NO_CHECK=1`.
+  - **`version.yml` is an advisory CI job** (`Version bumped`). It is not a required check, so it informs without blocking, and it
+    is skipped for `dependabot[bot]`. It has no `paths:` filter, because the rule has no carve-out.
+- **Baseline.** `0.7.0` is the first bump under this rule. It covers everything merged since `v0.6.0` without one (the `dogdns`
+  crate, the COPR/AUR/Homebrew packaging, ARM release archives, the hickory update), as one minor bump.
+
 ## Source control and CI
 
 - **Trunk on `master`.** Short-lived `{feature,fix,chore}/<name>` branches are PR'd into `master`. The old `dev` and

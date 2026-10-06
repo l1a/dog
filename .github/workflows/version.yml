@@ -1,0 +1,41 @@
+name: Version bump
+
+# Advisory: reports when a PR did not bump the version past master. It is NOT a required check
+# (branch protection requires only `CI OK`), so it informs and does not block; `just merge-pr`
+# does refuse to merge over any red check, this included.
+#
+# Every PR bumps the version, with no carve-out for docs-only or CI-only changes: patch for
+# fixes, tests, docs, CI and dependency updates, minor for a new user-visible feature. A release
+# needs no bump of its own. See AGENTS.md, Versioning.
+#
+# No `paths:` filter, because the rule has no carve-out.
+
+on:
+  pull_request:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: version-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    name: Version bumped
+    # Dependabot's own PRs are never merged: we open our own PR to resolve what it found, and
+    # that PR is the one that bumps. Skipped (not failed) here, so it does not read as a defect.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      # The tags and the base branch are needed to compare against, so fetch full history.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Version is past master and the last tag, and Cargo.lock agrees
+        run: python3 scripts/version_gate.py --base "origin/${BASE_REF}"
