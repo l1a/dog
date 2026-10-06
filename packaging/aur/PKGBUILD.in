@@ -9,7 +9,7 @@
 pkgname=dogdns
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="A command-line DNS client"
+pkgdesc="Command-line DNS client with colourful output, DoT, DoH and JSON"
 arch=('x86_64' 'aarch64')
 url="https://github.com/l1a/dog"
 license=('GPL-3.0-or-later')

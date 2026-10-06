@@ -174,6 +174,28 @@ something a user sees, in which case it follows the questions above.
   `git` and two builds of one source print the same string. If a date is ever wanted again, use `std` or `jiff`, not a stale crate.
 - `edition = "2018"` is old but is not a dependency.
 
+## Project description
+
+- **One source, many copies.** The description is written once, in `packaging/metadata.toml`: the one-line `summary`, the long
+  `description`, the README `tagline`, the crates.io description, keywords and categories, the GitHub About text and topics, and the COPR
+  page. It still has to be *copied* into each artifact that carries it (crates.io reads `Cargo.toml`, the AUR the PKGBUILD and `.SRCINFO`,
+  COPR's RPM the spec, Homebrew the formula), so the copies stay where they are and **`scripts/metadata_check.py` fails when any copy
+  disagrees**. It runs in `just scripts-check` (so in `just pr`) and in the advisory `Metadata` workflow, which is deliberately separate
+  from `packaging.yml` so that a README-only PR does not start the COPR build. Before this the same description was typed into six places
+  and had drifted until most of them said the same five words.
+- **It proves the copies agree, not that they are right.** Before a release, read the README and `metadata.toml` for claims that are no
+  longer true. Every claim in the README was run against the real binary when it was written: argument order, `--color`, `--seconds`,
+  `-1`, the exit statuses, the `jq` example, and that there is no OpenSSL in the dependency tree. Do the same for a new claim.
+- **Style rules the check enforces** for `summary` and `brew_desc` (what `brew audit`, the AUR and rpmlint expect): at most 80 characters,
+  no trailing full stop, no leading article, and not beginning with the package's own name. `crates.io` is exempt from the article rule.
+  Keywords: at most 5. Categories: at most 5, and each must be a real crates.io slug (`CATEGORIES` in the script: crates.io rejects an
+  unknown one only at publish time, so a typo would otherwise surface on release day).
+- **Two copies live on services, not in files, and are pushed:** the COPR project page by `copr.yml` on a release tag, and the GitHub About
+  box and topics by **`just github-metadata`**, which prints the change, asks, and sets the topics as an exact list. It is public and
+  immediate, so it is run by hand. `just github-metadata` without confirming is a dry run.
+- **`--short` described itself wrongly** ("display nothing but the first result") for as long as the project has existed: the code prints
+  the data of **every** answer. The help, the man page and the README now say what it does. Check what an option does before describing it.
+
 ## Packaging
 
 - **Names:** the crate (crates.io) and AUR package are `dogdns`; the COPR project is `kentobias/dog` (RPM name `dog`); the

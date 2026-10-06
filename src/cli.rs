@@ -187,7 +187,7 @@ pub fn build_cli() -> Command {
             Arg::new("short")
                 .short('1')
                 .long("short")
-                .help("Short mode: display nothing but the first result")
+                .help("Short mode: display only the data of each answer, one per line")
                 .action(ArgAction::SetTrue),
         )
         .next_help_heading("Meta options")

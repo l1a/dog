@@ -18,7 +18,7 @@
 Name:           dog
 Version:        @VERSION@
 Release:        1%{?dist}
-Summary:        Command-line DNS client
+Summary:        Command-line DNS client with colourful output, DoT, DoH and JSON
 
 License:        GPL-3.0-or-later
 URL:            https://github.com/l1a/dog
@@ -33,8 +33,10 @@ BuildRequires:  gcc
 BuildRequires:  pandoc
 
 %description
-dog is a command-line DNS client, like dig, but with colourful output. It supports
-DNS-over-TLS and DNS-over-HTTPS, and can emit JSON.
+dog is a command-line DNS client, like dig but friendlier. It prints colourful, readable
+output, takes simple arguments (dog example.com MX @1.1.1.1), speaks DNS over UDP, TCP, TLS
+and HTTPS, can emit JSON, and knows 35 record types, including HTTPS, SVCB, TLSA and the
+DNSSEC types.
 
 %prep
 %autosetup -n %{name}-%{version}

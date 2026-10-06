@@ -1,0 +1,48 @@
+name: Metadata
+
+# Checks that every copy of dog's project description agrees with packaging/metadata.toml, and that
+# the README still carries the tagline. A separate, light workflow on purpose: putting this in
+# packaging.yml would make a README-only PR trigger the COPR, AUR and Homebrew builds. Advisory: it
+# is not a required check. ci.yml's docs-only fast path skips the build for a README-only PR, and
+# this still runs, because the README is one of the copies it checks.
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'README.md'
+      - 'Cargo.toml'
+      - 'packaging/**'
+      - 'scripts/metadata_check.py'
+      - 'scripts/github_metadata.py'
+      - '.github/workflows/metadata.yml'
+  push:
+    branches: [ master ]
+    paths:
+      - 'README.md'
+      - 'Cargo.toml'
+      - 'packaging/**'
+      - 'scripts/metadata_check.py'
+      - 'scripts/github_metadata.py'
+      - '.github/workflows/metadata.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metadata-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  check:
+    name: Description agrees everywhere
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # Proves the check can FAIL, one corruption per rule, before trusting it to pass.
+      - run: python3 scripts/metadata_check.py --self-test
+
+      - run: python3 scripts/metadata_check.py
