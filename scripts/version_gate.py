@@ -59,7 +59,7 @@ def lock_version(lock_text: str, package: str = PACKAGE) -> str:
 
 def suggestions(version: str) -> str:
     major, minor, patch = (parse(version) + (0, 0, 0))[:3]
-    return f"{major}.{minor}.{patch + 1} (patch) or {major}.{minor + 1}.0 (minor)"
+    return f"{major}.{minor}.{patch + 1} (Z, patch) or {major}.{minor + 1}.0 (Y, minor)"
 
 
 def problems(current: str, lock: str, base: str | None, tag: str | None) -> list[str]:
@@ -84,10 +84,10 @@ def problems(current: str, lock: str, base: str | None, tag: str | None) -> list
 def bump_kind(old: str, new: str) -> str:
     a, b = (parse(old) + (0, 0, 0))[:3], (parse(new) + (0, 0, 0))[:3]
     if b[0] != a[0]:
-        return "major"
+        return "major (X)"
     if b[1] != a[1]:
-        return "minor"
-    return "patch"
+        return "minor (Y)"
+    return "patch (Z)"
 
 
 def git(*args: str) -> str:
@@ -136,10 +136,10 @@ def self_test() -> None:
     else:
         raise AssertionError("lock_version accepted a lockfile without the package")
 
-    assert bump_kind("0.6.0", "0.6.1") == "patch"
-    assert bump_kind("0.6.1", "0.7.0") == "minor"
-    assert bump_kind("0.7.0", "1.0.0") == "major"
-    assert suggestions("0.7.0") == "0.7.1 (patch) or 0.8.0 (minor)"
+    assert bump_kind("0.6.0", "0.6.1") == "patch (Z)"
+    assert bump_kind("0.6.1", "0.7.0") == "minor (Y)"
+    assert bump_kind("0.7.0", "1.0.0") == "major (X)"
+    assert suggestions("0.7.0") == "0.7.1 (Z, patch) or 0.8.0 (Y, minor)"
     for bad in ("v1.2.3", "1.2.3-rc.1", "", "x.y", "1."):
         try:
             parse(bad)
@@ -176,7 +176,7 @@ def main() -> int:
             return 1
         ref = base or tag
         kind = f"a {bump_kind(ref, current)} bump from {ref}" if ref else "no earlier version to compare"
-        print(f"version OK: {current} ({kind})")
+        print(f"version OK: {current}, {kind}")
         return 0
     except rp.RenderError as e:
         print(f"error: {e}", file=sys.stderr)
