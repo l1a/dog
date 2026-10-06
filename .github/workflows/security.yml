@@ -25,7 +25,7 @@ jobs:
       contents: read
       checks: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run cargo audit
         uses: actions-rust-lang/audit@v1

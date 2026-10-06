@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Proves the renderer's guards can FAIL (a no-op substitution, a surviving sentinel, a bad
       # version), and that every template still carries its sentinels and renders cleanly.
@@ -47,7 +47,7 @@ jobs:
       - name: Install dependencies
         run: dnf -y install make git rpm-build python3
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # git refuses a repository owned by another user, which is what a container checkout is.
       - name: Trust the checkout
@@ -103,7 +103,7 @@ jobs:
       - name: Install dependencies
         run: pacman -Syu --noconfirm git python
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # .SRCINFO is what the AUR actually reads, and it restates the PKGBUILD's version and
       # checksum. Hand-maintaining that agreement is the classic AUR footgun, so prove the
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: Homebrew/actions/setup-homebrew@main
 

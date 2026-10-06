@@ -150,6 +150,27 @@ something a user sees, in which case it follows the questions above.
 - CI and release builds use `--locked`, so a version bump without a matching `Cargo.lock` fails instead of being rewritten.
 - This repo is a fork of `ogham/dog`. Always pass `--repo l1a/dog` to `gh pr create` so a PR cannot go to upstream.
 
+## Dependencies
+
+- **Dependabot opens grouped weekly PRs** (`cargo`, and `github-actions`, with `hickory-*` kept together). **They are never merged.** We
+  open our own PR that does the same and more, because Dependabot only bumps *direct* dependencies: on 2026-10-06 it proposed 7 crates
+  while `cargo update` had **90** packages behind within our existing version ranges. Its PRs close by themselves once `master` carries
+  the update. Our PR follows the normal process, bump included (dependency updates are a **patch**).
+- **To check everything is current:** `cargo update --dry-run` (what moves within our ranges); compare each direct dependency with
+  crates.io for a newer *incompatible* version, which `cargo update` never offers (a newer `0.x` minor or a new major); and list every
+  `uses:` in the workflows against its latest release. `rust-toolchain@stable` and `setup-homebrew@main` track a rolling ref on purpose.
+- **Verify an update, do not just compile it:** build with `--locked`, run `just`, run `cargo audit`, and compare the **old and new
+  binaries** on the generated completions for all six shells, `--help`, and live queries over UDP, TCP, DNS-over-TLS, DNS-over-HTTPS and
+  `--json` (TTLs and answer order normalised: Cloudflare rotates the order of records). The 2026-10-06 update changed one thing: updated
+  `clap_complete` stopped offering the literal `[free]...` placeholder as a bash completion candidate, which is a fix.
+- **Read the release notes for a major bump.** `actions/checkout` 7 blocks checking out fork PRs under `pull_request_target` and
+  `workflow_run`, which we do not use; `extractions/setup-just` 4 had no notes. A workflow change is tested by its own PR's CI.
+- **`cargo audit` runs in three places:** `security.yml` in CI (push to `master`, PRs touching `Cargo.toml` or `Cargo.lock`, **weekly on
+  Sundays**, manually), which fails on vulnerabilities but not on warnings (unmaintained, unsound, yanked); `just pr`, advisory and only
+  if `cargo-audit` is installed; and by hand. It is **not** part of `CI OK`, so it informs and does not block a merge.
+- **Watch:** `datetime` (a build dependency used only to stamp the build date) was last released 2021-04-01. No advisory names it.
+  `edition = "2018"` is old but not a dependency.
+
 ## Packaging
 
 - **Names:** the crate (crates.io) and AUR package are `dogdns`; the COPR project is `kentobias/dog` (RPM name `dog`); the
