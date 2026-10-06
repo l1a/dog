@@ -11,6 +11,15 @@ updates:
     labels:
       - "dependencies"
     groups:
+      # hickory-resolver, hickory-net and hickory-proto are released together, and a newer
+      # resolver does not compile against an older net or proto even though its manifest
+      # allows it (Dependabot's resolver-only bump to 0.26.2 failed to build on every platform).
+      # A group that matches first keeps the three in one PR. It is not a guarantee: if upstream
+      # publishes the resolver before its companions, a resolver-only PR is still possible, and
+      # CI will catch it. The fix is then `cargo update -p hickory-resolver`, which moves all three.
+      hickory:
+        patterns:
+          - "hickory-*"
       cargo-dependencies:
         patterns:
           - "*"
