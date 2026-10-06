@@ -192,3 +192,5 @@ dog was originally created by Benjamin ‘ogham’ Sago. This version is a fork 
 
 **Source code:** `https://github.com/l1a/dog` \
 **Upstream:** `https://github.com/ogham/dog`
+
+<!-- fast-path test: this PR is closed unmerged -->
