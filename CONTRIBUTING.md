@@ -81,7 +81,8 @@ add lints, so a PR that did not touch the affected code can still start failing 
 the issue and PR templates skips format, clippy, the tests and the man page; a PR that changes only `man/` runs just the man page.
 Anything else runs everything, including every workflow file and Markdown in a subdirectory (which can be a build input). `CI OK`
 always reports, so a docs-only PR is never stuck waiting for a skipped check, and it fails if a job your change needs was skipped.
-Pushes to `master`, releases and any doubt run the full suite. The version check still runs on every PR.
+Pushes to `master`, releases and any doubt run the full suite. The version check still runs on every PR, and the required version
+bump in `Cargo.toml` and `Cargo.lock` does not make a docs-only PR count as code, provided it changes nothing but dogdns's own version.
 
 ## Packaging
 

@@ -121,6 +121,11 @@ something a user sees, in which case it follows the questions above.
   - **Only pull requests take the fast path.** A push to `master`, a release (`workflow_call`), a manual run, and any doubt (an API
     error, an empty or truncated file list) run everything. A rename counts both the old and the new name, so moving a code file to
     a docs path does not read as docs-only. `version.yml` still runs on docs-only PRs, because the rule has no carve-out.
+  - **The required version bump does not count as a code change.** Without this no PR that follows the rules could be docs-only, since
+    the bump edits `Cargo.toml` and `Cargo.lock`. `ci_changes.py` fetches both files at the merge base and at the head and ignores
+    them only if each differs in exactly one line, that line is `version = "..."`, TOML confirms it is dogdns's own version, and it is
+    the same old -> new in both. Anything else in either file, one file without the other, a rename, or a fetch error counts them as
+    code. A PR that changes only the version files is still code. (A docs-only PR was `code` for its first two weeks; PR #31 showed it.)
 - **`CI OK` is `scripts/ci_gate.py`.** It asks the API what every job concluded and does not trust `needs.*.result` alone. During a
   GitHub Actions outage (2026-10-05) the original gate passed a run whose Format and Clippy, Man page and Fedora jobs were all
   *cancelled*: a job cancelled in the runner queue reports **`abandoned`**, not `cancelled`, so `contains(..., 'cancelled')` was
