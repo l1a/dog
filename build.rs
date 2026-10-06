@@ -3,14 +3,15 @@
 //! come in both coloured and non-coloured variants. To make it easier to edit,
 //! backslashes (\) are used instead of the beginning of ANSI escape codes.
 //!
-//! The version string is quite complex: we want to show the version,
-//! current Git hash, and compilation date when building *debug*
-//! versions, but just the version for *release* versions.
+//! The version string is the version from Cargo.toml, with a warning added to
+//! *debug* builds. Nothing else is stamped into it: no Git hash and no build
+//! date, so a build does not need `git` and two builds of the same source
+//! produce the same string.
 //!
 //! This script generates the string from the environment variables
 //! that Cargo adds (http://doc.crates.io/environment-variables.html)
-//! and runs `git` to get the SHA1 hash. It then writes the strings
-//! into files, which we can include during compilation.
+//! and writes the strings into files, which we can include during
+//! compilation. It also generates the shell completions.
 
 use std::env;
 use std::fs::File;
@@ -19,7 +20,6 @@ use std::path::PathBuf;
 
 use clap_complete::{generate_to, Shell};
 use clap_complete_nushell::Nushell;
-use datetime::{LocalDateTime, ISO};
 
 #[path = "src/cli.rs"]
 mod cli;
@@ -35,14 +35,6 @@ fn main() -> io::Result<()> {
             "{}\nv{} \\1;31m(pre-release debug build!)\\0m",
             tagline,
             version_string()
-        )
-    } else if is_development_version() {
-        format!(
-            "{}\nv{} [{}] built on {} \\1;31m(pre-release!)\\0m",
-            tagline,
-            version_string(),
-            git_hash(),
-            build_date()
         )
     } else {
         format!("{}\nv{}", tagline, version_string())
@@ -92,29 +84,6 @@ fn strip_codes(input: &str) -> String {
         .replace("\\1;4;34", "")
 }
 
-/// Retrieve the project’s current Git hash, as a string.
-fn git_hash() -> String {
-    use std::process::Command;
-
-    String::from_utf8_lossy(
-        &Command::new("git")
-            .args(["rev-parse", "--short", "HEAD"])
-            .output()
-            .unwrap()
-            .stdout,
-    )
-    .trim()
-    .to_string()
-}
-
-/// Whether we should show pre-release info in the version string.
-///
-/// Both weekly releases and actual releases are --release releases,
-/// but actual releases will have a proper version number.
-fn is_development_version() -> bool {
-    cargo_version().ends_with("-pre") || env::var("PROFILE").unwrap() == "debug"
-}
-
 /// Whether we are building in debug mode.
 fn is_debug_build() -> bool {
     env::var("PROFILE").unwrap() == "debug"
@@ -130,10 +99,4 @@ fn cargo_version() -> String {
 /// as they did not correspond to any actual Cargo features or gated code.
 fn version_string() -> String {
     cargo_version()
-}
-
-/// Formats the current date as an ISO 8601 string.
-fn build_date() -> String {
-    let now = LocalDateTime::now();
-    format!("{}", now.date().iso())
 }
