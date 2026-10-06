@@ -104,7 +104,7 @@ OUTPUT OPTIONS
 ==============
 
 `-1`, `--short`
-: Short mode: display nothing but the first result.
+: Short mode: display only the data of each answer, one per line. The exit status is 2 if the server gave no result.
 
 `-J`, `--json`
 : Display the output as JSON.

@@ -14,7 +14,7 @@
 # and upload per macOS version and architecture. This builds from source and needs only Rust
 # and pandoc, which Homebrew supplies as build-time dependencies.
 class Dog < Formula
-  desc "Command-line DNS client"
+  desc "Command-line DNS client with colourful output, DoT, DoH and JSON"
   homepage "https://github.com/l1a/dog"
   url "https://github.com/l1a/dog/archive/refs/tags/v@VERSION@.tar.gz"
   sha256 "@SHA256@"

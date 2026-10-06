@@ -1,0 +1,70 @@
+# The one place dog's project description is written.
+#
+# The same description used to be typed separately into Cargo.toml, the PKGBUILD, .SRCINFO, the
+# RPM spec, the Homebrew formula, the COPR project page, the GitHub About box and the README, and
+# the copies drifted apart until most of them said the same five words. Each channel still needs
+# its own copy inside the artifact it publishes (crates.io reads Cargo.toml, the AUR reads the
+# PKGBUILD, COPR's RPM the spec, Homebrew the formula), so the copies stay where they are and
+# `scripts/metadata_check.py`, run by `just scripts-check` and by the Packaging workflow, FAILS
+# when any copy disagrees with what is written here.
+#
+# Two things live on the services instead and are PUSHED from here: the COPR project page (by
+# .github/workflows/copr.yml on a release tag) and the GitHub About box and topics (by
+# `just github-metadata`, which prints what it would change and asks before it does).
+
+# The one-line summary. AUR `pkgdesc`, RPM `Summary:` and the Homebrew `desc` must EQUAL it.
+# Packaging style: at most 80 characters, no trailing full stop, no leading article, and not
+# beginning with the package's own name.
+summary = "Command-line DNS client with colourful output, DoT, DoH and JSON"
+
+# The Homebrew formula's `desc`. `brew audit` rejects a leading article, the formula's own name
+# and a trailing full stop, and caps it at 80 characters, so it can differ from `summary`.
+brew_desc = "Command-line DNS client with colourful output, DoT, DoH and JSON"
+
+# The SPDX identifier every channel must declare.
+license = "GPL-3.0-or-later"
+
+# The first sentence of the README, which must appear in it verbatim.
+tagline = "**dog** is a command-line DNS client, like `dig` but friendlier."
+
+# The RPM `%description`, compared with all whitespace collapsed (the spec wraps it).
+description = """
+dog is a command-line DNS client, like dig but friendlier. It prints colourful, readable \
+output, takes simple arguments (dog example.com MX @1.1.1.1), speaks DNS over UDP, TCP, TLS \
+and HTTPS, can emit JSON, and knows 35 record types, including HTTPS, SVCB, TLSA and the \
+DNSSEC types.
+"""
+
+[crates]
+# Cargo.toml's `description`, `keywords` and `categories` must EQUAL these. crates.io shows the
+# description as the one-liner in search results, so it carries the whole pitch. Keywords: at
+# most 5. Categories: at most 5, and each must be a real crates.io category slug.
+description = "A command-line DNS client, like dig but friendlier: colourful output, simple arguments, DNS-over-TLS, DNS-over-HTTPS, JSON output and 35 record types"
+keywords = ["dns", "dig", "dns-over-https", "dns-over-tls", "resolver"]
+categories = ["command-line-utilities", "network-programming"]
+
+[github]
+# Shown in the repository's About box. GitHub caps it at 350 characters.
+description = "A command-line DNS client, like dig but friendlier. Colourful output, simple arguments (dog example.com MX @1.1.1.1), DNS-over-TLS and DNS-over-HTTPS, JSON output and 35 record types. Maintained fork of ogham/dog, built on hickory-resolver."
+# At most 20; lowercase letters, digits and hyphens. Set as an exact list, so a topic removed here
+# is removed from the repository too.
+topics = [
+    "dns",
+    "dig",
+    "dns-client",
+    "cli",
+    "command-line",
+    "rust",
+    "dns-over-https",
+    "dns-over-tls",
+    "doh",
+    "dot",
+    "json",
+    "resolver",
+]
+
+[copr]
+# The COPR project page's description and installation instructions, as Markdown. Every paragraph
+# line at column zero: COPR renders a line indented four or more spaces as a code block.
+description = "packaging/copr/project-description.md"
+instructions = "packaging/copr/project-instructions.md"

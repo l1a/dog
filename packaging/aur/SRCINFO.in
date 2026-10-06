@@ -1,5 +1,5 @@
 pkgbase = dogdns
-	pkgdesc = A command-line DNS client
+	pkgdesc = Command-line DNS client with colourful output, DoT, DoH and JSON
 	pkgver = @VERSION@
 	pkgrel = 1
 	url = https://github.com/l1a/dog

@@ -47,6 +47,13 @@ A bug fix is a **patch even if it changes the output**, when the old output was 
 dependency's own version jumped, unless it changes something a user sees. A release needs no bump of its own: the last PR to merge
 already bumped it.
 
+## Changing the project description
+
+The description is written once, in `packaging/metadata.toml`. Edit it there, then update the copies it names: `Cargo.toml`, the
+PKGBUILD and `.SRCINFO`, the RPM spec, the Homebrew formula and the README tagline. `just metadata-check` (part of `just scripts-check`
+and of `just pr`) tells you exactly which copy disagrees. The GitHub About box and topics are pushed by hand with
+`just github-metadata`, which shows the change and asks first.
+
 ## Running the checks locally
 
 You need a stable Rust toolchain with `rustfmt` and `clippy`, plus [`just`](https://github.com/casey/just).
