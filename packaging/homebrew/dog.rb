@@ -57,10 +57,17 @@ class Dog < Formula
     # which is why this is guarded and not simply asserted.
     assert_match version.to_s, output unless version.head?
 
-    # The completions the CLI generates must be real, and the man page must carry the real
-    # version in its footer. A bare existence check would pass on an unsubstituted placeholder.
+    # The completions the CLI generates must be real.
     assert_match "_dog", shell_output("#{bin}/dog --completions bash")
+
+    # The man page must be installed and its version placeholder must have been substituted. A bare
+    # existence check would pass on an unsubstituted `{{VERSION}}`, which is the defect worth
+    # catching, so that is asserted for every install. The version itself is compared only for a
+    # release: a --HEAD build is named HEAD-<sha>, and roff escapes the hyphen as `\-`, so the
+    # plain string never appears in the page.
     assert_path_exists man1/"dog.1"
-    assert_match version.to_s, (man1/"dog.1").read
+    man_page = (man1/"dog.1").read
+    refute_match(/\{\{VERSION\}\}/, man_page)
+    assert_match version.to_s, man_page unless version.head?
   end
 end
