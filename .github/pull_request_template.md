@@ -21,5 +21,6 @@ Describe the checks you ran.
 - [ ] `just` passes locally (build, `cargo fmt --check`, `clippy -D warnings`, tests)
 - [ ] I added or updated tests for the change
 - [ ] I updated `README.md`, `man/dog.1.md` or `AGENTS.md` if behaviour or workflow changed
-- [ ] If the version was bumped, `Cargo.lock` was updated and committed with it
+- [ ] **The version is bumped** in `Cargo.toml` (patch for fixes, tests, docs, CI and dependency updates; minor for a new user-visible feature) and `Cargo.lock` is committed with it. Every PR bumps, with no exceptions
+- [ ] Opened with `just open-pr`, which runs the pre-PR gate (`just pr`)
 - [ ] No failure mode I introduced can degrade silently: it errors, or it is reported

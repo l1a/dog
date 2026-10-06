@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pre-push hook: runs the format check and clippy before any push, so a failure CI would report
+# is caught first. Installed by `just install-hooks`.
+#
+# To skip for a single push: GIT_NO_CHECK=1 git push ...
+# To remove it permanently: delete .git/hooks/pre-push
+#
+# A hook, not agent configuration, on purpose: git runs it whatever invoked the push (a human,
+# Claude, Gemini or anything else), where anything under .claude/ binds only one tool.
+
+set -euo pipefail
+
+if [ "${GIT_NO_CHECK:-0}" = "1" ]; then
+    exit 0
+fi
+
+# A push that only deletes a remote branch has nothing to check.
+only_deletes=1
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+    if [ "$local_sha" != "0000000000000000000000000000000000000000" ]; then
+        only_deletes=0
+    fi
+done
+[ "$only_deletes" = "1" ] && exit 0
+
+if ! command -v just >/dev/null 2>&1; then
+    echo "[pre-push] 'just' is not installed: skipping the fmt and clippy check." >&2
+    exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+echo "[pre-push] cargo fmt --check, then clippy..."
+if ! just --justfile "$REPO_ROOT/Justfile" fmt || ! just --justfile "$REPO_ROOT/Justfile" clippy; then
+    echo "" >&2
+    echo "[pre-push] Failed. Run 'cargo fmt' to fix formatting, or 'just clippy' to see the lints." >&2
+    echo "[pre-push] To push anyway, once: GIT_NO_CHECK=1 git push ..." >&2
+    exit 1
+fi
+echo "[pre-push] OK."
