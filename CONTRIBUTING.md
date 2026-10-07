@@ -74,7 +74,7 @@ add lints, so a PR that did not touch the affected code can still start failing 
 | Job | What it checks |
 |---|---|
 | Format and Clippy | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` |
-| Test | build, tests, and a no-network smoke test on Linux (x86_64, aarch64, Fedora), macOS and Windows (x86_64, aarch64) |
+| Test | build, tests, and a smoke test (including a real DNS query to 8.8.8.8, retried, so it needs the network) on Linux (x86_64, aarch64, Fedora), macOS and Windows (x86_64, aarch64) |
 | Man page | `just man` builds and renders |
 | Security Audit | `cargo audit`, on dependency changes and weekly |
 | Version bumped | advisory: the version is past `master`'s and the last tag, and `Cargo.lock` agrees |

@@ -1,0 +1,2 @@
+# Shell scripts run under bash on every CI OS, including Windows runners that check out with CRLF.
+*.sh text eol=lf

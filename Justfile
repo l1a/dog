@@ -100,6 +100,10 @@ github-metadata:
 @publish-brew version:
     python3 scripts/publish_packaging.py brew "{{version}}"
 
+# run a real DNS query against 8.8.8.8 with a freshly built dog (needs the network); what CI's smoke test runs
+@smoke-dns:
+    scripts/smoke_dns.sh
+
 # lint the code
 @clippy:
     cargo clippy --all-targets -- -D warnings
