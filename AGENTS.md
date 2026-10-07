@@ -244,7 +244,13 @@ something a user sees, in which case it follows the questions above.
 - **Homebrew is verified by `packaging.yml`'s `homebrew` job** (`brew audit --strict`, `brew install --HEAD`, `brew test`) through a
   throwaway local tap, because Homebrew only installs formulae from a tap. It cannot be run locally here (no brew), so that job
   is the first real test of the formula.
-- Packaging is **not** a required check, so `packaging.yml` may use `paths:` filters. `ci.yml` may not (see above).
+- Packaging is **not** a required check, so a skipped job blocks nothing, and `packaging.yml`, `metadata.yml` and `security.yml` skip
+  their jobs for a PR with nothing to check. They do **not** use `on.pull_request.paths`, because every PR bumps `Cargo.toml` and
+  `Cargo.lock`, which those filters list, so a docs-only PR still started the COPR, AUR and Homebrew builds. Each has a `changes` job
+  running `scripts/path_filter.py`, which matches the PR's files against the workflow's own `on.push.paths` (the one list, not
+  written twice) and ignores the version files only when `ci_changes.py`'s proof says the change is a bare bump. A bump alone, a
+  non-PR event, a workflow it cannot read and any API error all run the jobs. **Add a path to `on.push.paths` and the PR filter
+  follows.** `ci.yml` may not use `paths:` at all (see above), and CodeQL is GitHub's default setup, so it still runs on every PR.
 
 ## Known issues
 
