@@ -78,6 +78,7 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
     python3 scripts/version_gate.py --self-test
     python3 scripts/ci_changes.py --self-test
     python3 scripts/ci_gate.py --self-test
+    python3 scripts/branch_gate.py --self-test
     python3 scripts/metadata_check.py --self-test
     python3 scripts/github_metadata.py --self-test
     python3 scripts/metadata_check.py
@@ -154,6 +155,9 @@ pr:
     # 1. A feature branch, never master.
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
     [ "$BRANCH" = "master" ] && fail "On master: create a feature branch first (feature/, fix/, chore/ or docs/<name>)"
+    # Named {feature,fix,chore,docs}/<name>, and a docs/ branch must change documentation only.
+    git fetch -q origin master
+    python3 scripts/branch_gate.py --base {{base}} || fail "Branch name: see above (CONTRIBUTING.md, Workflow)"
     pass "Branch: $BRANCH"
 
     # 2. Everything committed, so what this gate checks is what gets pushed.
