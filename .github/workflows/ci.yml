@@ -127,8 +127,7 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --locked --verbose
 
-      # None of these touch the network: a live DNS query would make CI depend on the
-      # runner's resolver, not on this code.
+      # These touch no network.
       - name: Smoke test the binary
         shell: bash
         run: |
@@ -139,6 +138,14 @@ jobs:
             out=$(cargo run --quiet -- --completions "$shell")
             [ -n "$out" ] || { echo "no $shell completions"; exit 1; }
           done
+
+      # A real query, on every OS and architecture: the unit tests are offline, so nothing else shows the
+      # resolver, the sockets and the output code work together. It asks 8.8.8.8 directly (not the runner's
+      # resolver) and checks the shape of the answers, with a retry for a network blip. A persistent
+      # failure fails this job, and with it `CI OK`. See scripts/smoke_dns.sh.
+      - name: Smoke test a real DNS query
+        shell: bash
+        run: bash scripts/smoke_dns.sh
 
   man:
     name: Man page

@@ -33,6 +33,13 @@ The test suite covers:
 - CLI argument parsing (`src/options.rs`)
 
 *Note: The original `dog` integration test suite (`xtests/`) and `dns/` wire format parsing tests are no longer applicable as parsing is entirely delegated to `hickory-resolver`.*
+- **CI's smoke test resolves a real name (`scripts/smoke_dns.sh`, from the `test` job on every OS in the matrix).** The unit tests are
+  offline, so this is the only check that the resolver, the sockets and the output code work together on each OS and architecture. It asks
+  8.8.8.8 directly, not the runner's resolver, for `google.com` in three output modes (text `ANY`, `--json` `A`, `--short` `NS`) and checks
+  the shape of the answers, not their content (addresses and TXT strings change). It retries three times for a network blip and then
+  **fails the job, and so `CI OK`**: a smoke test that cannot fail proves nothing. `just smoke-dns` runs it locally. `dog`'s `ANY` is not
+  a DNS `ANY` query; it sends one query per common type (8 responses, 27 answers for google.com), so it works where a resolver would
+  answer a real `ANY` minimally. `.gitattributes` forces LF on `*.sh`, because a Windows runner may check out CRLF and bash cannot run that.
 
 ## Versioning
 
@@ -255,8 +262,3 @@ something a user sees, in which case it follows the questions above.
 ## Known issues
 
 - TLS configurations may require appropriate system libraries or cross-compilation toolchains depending on the target OS.
-- **CI's smoke test never resolves a name.** The "Smoke test the binary" step in `ci.yml` runs `--version`, `--help` and `--completions`
-  only, so no job proves a built `dog` can send a query and parse an answer (the unit tests are offline). It should run a real query on
-  every OS in the matrix, for example `dog google.com ANY @8.8.8.8`, and check the exit status and that an answer was printed. Open
-  points: whether 8.8.8.8 answers `ANY` in full or minimally (fall back to `A` if it refuses), whether every runner allows outbound
-  UDP/53, and whether a network flake should fail `CI OK` or only warn.
