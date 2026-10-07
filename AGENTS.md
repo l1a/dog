@@ -249,3 +249,8 @@ something a user sees, in which case it follows the questions above.
 ## Known issues
 
 - TLS configurations may require appropriate system libraries or cross-compilation toolchains depending on the target OS.
+- **CI's smoke test never resolves a name.** The "Smoke test the binary" step in `ci.yml` runs `--version`, `--help` and `--completions`
+  only, so no job proves a built `dog` can send a query and parse an answer (the unit tests are offline). It should run a real query on
+  every OS in the matrix, for example `dog google.com ANY @8.8.8.8`, and check the exit status and that an answer was printed. Open
+  points: whether 8.8.8.8 answers `ANY` in full or minimally (fall back to `A` if it refuses), whether every runner allows outbound
+  UDP/53, and whether a network flake should fail `CI OK` or only warn.
