@@ -16,9 +16,12 @@ exclude = [
     "/completions/*", "/man/*", "/xtests/*",
     "/dog-screenshot.png", "/dog.code-workspace", "/Justfile",
     "/AGENTS.md", "/CLAUDE.md", "/CONTRIBUTING.md", "/.rustfmt.toml",
+    # Local tooling state, so a Claude Code settings file or a handoff note never blocks `cargo publish`
+    # (an untracked file in the package makes the tree "dirty") or ships in the crate.
+    "/.claude", "/WIP.md",
 ]
 license = "GPL-3.0-or-later"
-version = "0.7.12"
+version = "0.7.13"
 
 
 [[bin]]

@@ -137,8 +137,9 @@ jobs:
           $name = "dog-$env:GITHUB_REF_NAME-${{ matrix.suffix }}"
           if ($env:GITHUB_REF_TYPE -ne 'tag') { $name = "dog-dev-${{ matrix.suffix }}" }
           $d = "dist/$name"
-          New-Item -ItemType Directory -Force -Path "$d/bin", "$d/completions" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$d/bin", "$d/man", "$d/completions" | Out-Null
           Copy-Item target/release/dog.exe "$d/bin/"
+          Copy-Item man-out/dog.1 "$d/man/"
           Copy-Item LICENSE, README.md $d
           $bin = 'target/release/dog.exe'
           foreach ($pair in @(@('powershell', '_dog.ps1'), @('bash', 'dog.bash'), @('zsh', '_dog'),
