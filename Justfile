@@ -78,6 +78,7 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
     python3 scripts/version_gate.py --self-test
     python3 scripts/ci_changes.py --self-test
     python3 scripts/ci_gate.py --self-test
+    python3 scripts/path_filter.py --self-test
     python3 scripts/branch_gate.py --self-test
     python3 scripts/metadata_check.py --self-test
     python3 scripts/github_metadata.py --self-test

@@ -9,13 +9,6 @@ name: Metadata
 on:
   pull_request:
     branches: [ master ]
-    paths:
-      - 'README.md'
-      - 'Cargo.toml'
-      - 'packaging/**'
-      - 'scripts/metadata_check.py'
-      - 'scripts/github_metadata.py'
-      - '.github/workflows/metadata.yml'
   push:
     branches: [ master ]
     paths:
@@ -35,8 +28,33 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
+  # Decides whether this PR has anything for the jobs below to check. Not `on.pull_request.paths`,
+  # which cannot tell the version bump every PR makes from a real change to Cargo.toml and
+  # Cargo.lock: see scripts/path_filter.py. The patterns it uses are the `push` paths above.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/path_filter.py .github/workflows/metadata.yml
+
   check:
     name: Description agrees everywhere
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

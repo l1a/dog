@@ -6,8 +6,6 @@ name: Packaging
 on:
   push:
     branches: [ master ]
-  pull_request:
-    branches: [ master ]
     paths:
       - 'packaging/**'
       - '.copr/**'
@@ -17,6 +15,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/packaging.yml'
+  pull_request:
+    branches: [ master ]
   workflow_dispatch:
 
 permissions:
@@ -27,8 +27,33 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
+  # Decides whether this PR has anything for the jobs below to check. Not `on.pull_request.paths`,
+  # which cannot tell the version bump every PR makes from a real change to Cargo.toml and
+  # Cargo.lock: see scripts/path_filter.py. The patterns it uses are the `push` paths above.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/path_filter.py .github/workflows/packaging.yml
+
   render:
     name: Renderer self-test
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -40,6 +65,8 @@ jobs:
 
   copr:
     name: COPR build (Fedora)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     container: fedora:latest
     timeout-minutes: 45
@@ -96,6 +123,8 @@ jobs:
 
   aur:
     name: AUR (Arch)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     timeout-minutes: 15
@@ -128,6 +157,8 @@ jobs:
 
   homebrew:
     name: Homebrew formula
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

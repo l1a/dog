@@ -85,6 +85,8 @@ Anything else runs everything, including every workflow file and Markdown in a s
 always reports, so a docs-only PR is never stuck waiting for a skipped check, and it fails if a job your change needs was skipped.
 Pushes to `master`, releases and any doubt run the full suite. The version check still runs on every PR, and the required version
 bump in `Cargo.toml` and `Cargo.lock` does not make a docs-only PR count as code, provided it changes nothing but dogdns's own version.
+The same holds for the Packaging, Metadata and Security Audit workflows: they run only when the PR changes something they check, and a
+bare version bump is not one.
 
 ## Packaging
 
