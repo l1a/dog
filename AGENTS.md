@@ -176,7 +176,9 @@ something a user sees, in which case it follows the questions above.
   `uses:` in the workflows against its latest release. `rust-toolchain@stable` and `setup-homebrew@main` track a rolling ref on purpose.
 - **Verify an update, do not just compile it:** build with `--locked`, run `just`, run `cargo audit`, and compare the **old and new
   binaries** on the generated completions for all six shells, `--help`, and live queries over UDP, TCP, DNS-over-TLS, DNS-over-HTTPS and
-  `--json` (TTLs and answer order normalised: Cloudflare rotates the order of records). The 2026-10-06 update changed one thing: updated
+  `--json` (TTLs and answer order normalised: Cloudflare rotates the order of records). Two traps: a `--json` answer is a zone-file string
+  (`"example.com. 102 IN A ..."`), so the TTL sits inside the string and a `ttl` key filter misses it; and DoH takes the server's address
+  (`@1.1.1.1 -H`), not a URL, which fails with exit 3 on every build. The 2026-10-06 update changed one thing: updated
   `clap_complete` stopped offering the literal `[free]...` placeholder as a bash completion candidate, which is a fix.
 - **Read the release notes for a major bump.** `actions/checkout` 7 blocks checking out fork PRs under `pull_request_target` and
   `workflow_run`, which we do not use; `extractions/setup-just` 4 had no notes. A workflow change is tested by its own PR's CI.
