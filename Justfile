@@ -275,7 +275,12 @@ merge-pr:
     set -euo pipefail
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
     [ "$BRANCH" = "master" ] && { echo "Error: already on master."; exit 1; }
-    [ "$(gh pr view --repo l1a/dog --json headRefOid --jq .headRefOid)" = "$(git rev-parse HEAD)" ] \
+    # gh refuses --repo without a PR argument ("argument required when using the --repo flag"), so
+    # resolve the PR once and pass it everywhere. Without it every call below failed, and the head
+    # check reported that as "the PR head is not your local HEAD" (hit merging #40).
+    PR=$(gh pr view "$BRANCH" --repo l1a/dog --json number --jq .number) \
+        || { echo "Error: no pull request found for branch $BRANCH in l1a/dog."; exit 1; }
+    [ "$(gh pr view "$PR" --repo l1a/dog --json headRefOid --jq .headRefOid)" = "$(git rev-parse HEAD)" ] \
         || { echo "Error: the PR head is not your local HEAD. Push first, then wait for CI on that commit."; exit 1; }
 
     # Count in jq rather than looping over a list of states in the shell: a check that is still
@@ -283,22 +288,22 @@ merge-pr:
     # states would never see it and the recipe would merge with a check pending. A check that
     # reports neither a conclusion nor a state counts as not green.
     CHECKS='.statusCheckRollup[]? | select((.conclusion // .state // "") != "SKIPPED")'
-    TOTAL=$(gh pr view --repo l1a/dog --json statusCheckRollup --jq "[$CHECKS] | length")
+    TOTAL=$(gh pr view "$PR" --repo l1a/dog --json statusCheckRollup --jq "[$CHECKS] | length")
     if [ "$TOTAL" = "0" ]; then
         echo "Error: no checks have reported for this commit. That is not the same as passing."
         exit 1
     fi
-    NOT_GREEN=$(gh pr view --repo l1a/dog --json statusCheckRollup --jq "[$CHECKS | select((.conclusion // .state // \"\") != \"SUCCESS\")] | length")
+    NOT_GREEN=$(gh pr view "$PR" --repo l1a/dog --json statusCheckRollup --jq "[$CHECKS | select((.conclusion // .state // \"\") != \"SUCCESS\")] | length")
     if [ "$NOT_GREEN" != "0" ]; then
         echo "Error: CI is not green on this branch ($NOT_GREEN of $TOTAL checks):"
-        gh pr view --repo l1a/dog --json statusCheckRollup \
+        gh pr view "$PR" --repo l1a/dog --json statusCheckRollup \
             --jq ".statusCheckRollup[]? | select((.conclusion // .state // \"\") != \"SKIPPED\" and (.conclusion // .state // \"\") != \"SUCCESS\") | \"  \(if (.conclusion // .state // \"\") == \"\" then (.status // \"PENDING\") else (.conclusion // .state) end)  \(.name // .context)\""
         exit 1
     fi
-    [ "$(gh pr view --repo l1a/dog --json mergeable --jq .mergeable)" = "MERGEABLE" ] \
+    [ "$(gh pr view "$PR" --repo l1a/dog --json mergeable --jq .mergeable)" = "MERGEABLE" ] \
         || { echo "Error: the PR is not mergeable (conflicts, or GitHub is still working it out)."; exit 1; }
     echo "CI is green on every check."
-    gh pr merge --repo l1a/dog --merge
+    gh pr merge "$PR" --repo l1a/dog --merge
     git checkout master
     git pull -q origin master
     git branch -D "$BRANCH" 2>/dev/null || true
