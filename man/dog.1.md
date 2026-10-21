@@ -97,7 +97,7 @@ The DNS-over-TLS (DoT) and DNS-over-HTTPS (DoH) protocols are available with the
 
 Note that if a hostname or domain name is given as a nameserver, rather than an IP address, the resolution of that host is performed by the operating system, _not_ by dog.
 
-Unlike the others, the HTTPS transport type requires an entire URL, complete with protocol, domain name, and path.
+The HTTPS transport takes the nameserver the same way as the others, as an address or a host name, not a URL: dog sends its queries to `https://<nameserver>/dns-query`, the path public DoH resolvers use. A host name's addresses do not always serve every protocol: `cloudflare-dns.com` answers DoH but not plain DNS or DoT.
 
 
 OUTPUT OPTIONS

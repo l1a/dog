@@ -8,12 +8,14 @@
 #
 # The unit tests are offline, so nothing else proves the resolver, the sockets and the output code
 # work together on each OS and architecture CI covers. This asks a public resolver for google.com
-# in three output modes and checks the SHAPE of the answers, not their content: addresses, TTLs and
-# TXT strings change from one run to the next.
+# in three output modes, then names the same resolver by host name over UDP and DNS-over-HTTPS, and
+# checks the SHAPE of the answers, not their content: addresses, TTLs and TXT strings change from one
+# run to the next.
 #
-#   SMOKE_SERVER    resolver to ask            (default 8.8.8.8)
-#   SMOKE_NAME      name to look up            (default google.com)
-#   SMOKE_ATTEMPTS  tries before giving up     (default 3; a query times out after 15 s)
+#   SMOKE_SERVER       resolver to ask                       (default 8.8.8.8)
+#   SMOKE_HOST_SERVER  the same, given as a host name        (default dns.google)
+#   SMOKE_NAME         name to look up                       (default google.com)
+#   SMOKE_ATTEMPTS     tries before giving up                (default 3; a query times out after 15 s)
 #
 # (The checks use here-strings, not `echo | grep -q`: under `pipefail`, grep exiting at the first match can
 # SIGPIPE the echo and report a failure that is not one.)
@@ -24,6 +26,7 @@
 set -euo pipefail
 
 server=${SMOKE_SERVER:-8.8.8.8}
+host_server=${SMOKE_HOST_SERVER:-dns.google}
 name=${SMOKE_NAME:-google.com}
 attempts=${SMOKE_ATTEMPTS:-3}
 
@@ -65,8 +68,29 @@ short_ns() {
     grep -Eq '^[A-Za-z0-9.-]+\.$' <<<"$out"
 }
 
+# 4. A host name as the nameserver. The operating system resolves it (getaddrinfo), so this one check
+#    leans on the runner's resolver. From v0.6.0 to v0.7.14 every host name failed with "no connections
+#    available" (hickory 0.26 made the bootstrap resolver's default config empty) and nothing noticed.
+host_udp() {
+    local out
+    out=$("${dog[@]}" --short "$name" A "@$host_server") || return 1
+    head -n 3 <<<"$out"
+    grep -Eq '^[0-9]+(\.[0-9]+){3}$' <<<"$out"
+}
+
+# 5. The same over DNS-over-HTTPS, which also checks the server's certificate against that host name.
+host_https() {
+    local out
+    out=$("${dog[@]}" --https --short "$name" A "@$host_server") || return 1
+    head -n 3 <<<"$out"
+    grep -Eq '^[0-9]+(\.[0-9]+){3}$' <<<"$out"
+}
+
 echo "dog DNS smoke test: $name via $server"
 retry "text output of ANY had no record for $name" text_any
 retry "JSON output of A had no answer" json_a
 retry "short output of NS had no host name" short_ns
+echo "nameserver given as a host name: $host_server"
+retry "no A answer from nameserver $host_server over UDP" host_udp
+retry "no A answer from nameserver $host_server over HTTPS" host_https
 echo "smoke test passed"

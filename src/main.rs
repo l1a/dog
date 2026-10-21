@@ -301,35 +301,19 @@ async fn run(
                 }
                 ip
             } else {
+                // A host name is resolved by the operating system (getaddrinfo: the hosts file,
+                // nsswitch, systemd-resolved, a VPN's split DNS), as the man page says, not by dog.
+                // It was once a hickory resolver built from ResolverConfig::default(), which meant
+                // Google in hickory 0.24 and became an empty server list in 0.26, so every host name
+                // failed with "no connections available".
                 if is_tls {
-                    tls_dns_name = if ns_str == "8.8.8.8"
-                        || ns_str == "8.8.4.4"
-                        || ns_str == "2001:4860:4860::8888"
-                        || ns_str == "2001:4860:4860::8844"
-                    {
-                        Some("dns.google".to_string())
-                    } else if ns_str == "1.1.1.1"
-                        || ns_str == "1.0.0.1"
-                        || ns_str == "2606:4700:4700::1111"
-                        || ns_str == "2606:4700:4700::1001"
-                    {
-                        Some("cloudflare-dns.com".to_string())
-                    } else {
-                        Some(ns_str.clone())
-                    };
+                    tls_dns_name = Some(ns_str.clone());
                 }
 
-                let resolver = TokioResolver::builder_with_config(
-                    ResolverConfig::default(),
-                    hickory_resolver::net::runtime::TokioRuntimeProvider::default(),
-                )
-                .with_options(ResolverOpts::default())
-                .build()
-                .unwrap();
-                match resolver.lookup_ip(ns_str.as_str()).await {
-                    Ok(lookup) => {
-                        if let Some(ip) = lookup.iter().next() {
-                            ip
+                match tokio::net::lookup_host((ns_str.as_str(), 0)).await {
+                    Ok(mut addrs) => {
+                        if let Some(addr) = addrs.next() {
+                            addr.ip()
                         } else {
                             eprintln!(
                                 "Failed to resolve nameserver '{ns_str}': No IP addresses found"

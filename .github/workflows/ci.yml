@@ -141,8 +141,9 @@ jobs:
 
       # A real query, on every OS and architecture: the unit tests are offline, so nothing else shows the
       # resolver, the sockets and the output code work together. It asks 8.8.8.8 directly (not the runner's
-      # resolver) and checks the shape of the answers, with a retry for a network blip. A persistent
-      # failure fails this job, and with it `CI OK`. See scripts/smoke_dns.sh.
+      # resolver), then dns.google by host name (which the runner's resolver turns into an address), and
+      # checks the shape of the answers, with a retry for a network blip. A persistent failure fails this
+      # job, and with it `CI OK`. See scripts/smoke_dns.sh.
       - name: Smoke test a real DNS query
         shell: bash
         run: bash scripts/smoke_dns.sh

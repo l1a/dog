@@ -35,7 +35,8 @@ The test suite covers:
 *Note: The original `dog` integration test suite (`xtests/`) and `dns/` wire format parsing tests are no longer applicable as parsing is entirely delegated to `hickory-resolver`.*
 - **CI's smoke test resolves a real name (`scripts/smoke_dns.sh`, from the `test` job on every OS in the matrix).** The unit tests are
   offline, so this is the only check that the resolver, the sockets and the output code work together on each OS and architecture. It asks
-  8.8.8.8 directly, not the runner's resolver, for `google.com` in three output modes (text `ANY`, `--json` `A`, `--short` `NS`) and checks
+  8.8.8.8 directly, not the runner's resolver, for `google.com` in three output modes (text `ANY`, `--json` `A`, `--short` `NS`), then
+  names the same resolver as `@dns.google` over UDP and DoH (the OS resolves that host name), and checks
   the shape of the answers, not their content (addresses and TXT strings change). It retries three times for a network blip and then
   **fails the job, and so `CI OK`**: a smoke test that cannot fail proves nothing. `just smoke-dns` runs it locally. `dog`'s `ANY` is not
   a DNS `ANY` query; it sends one query per common type (8 responses, 27 answers for google.com), so it works where a resolver would
@@ -178,8 +179,15 @@ something a user sees, in which case it follows the questions above.
   binaries** on the generated completions for all six shells, `--help`, and live queries over UDP, TCP, DNS-over-TLS, DNS-over-HTTPS and
   `--json` (TTLs and answer order normalised: Cloudflare rotates the order of records). Two traps: a `--json` answer is a zone-file string
   (`"example.com. 102 IN A ..."`), so the TTL sits inside the string and a `ttl` key filter misses it; and DoH takes the server's address
-  (`@1.1.1.1 -H`), not a URL, which fails with exit 3 on every build. The 2026-10-06 update changed one thing: updated
+  or host name (`@1.1.1.1 -H`), not a URL (exit 3). Also query a nameserver given by **host name**: that path broke unnoticed for five
+  releases (next bullet). The 2026-10-06 update changed one thing: updated
   `clap_complete` stopped offering the literal `[free]...` placeholder as a bash completion candidate, which is a fix.
+- **A dependency's `Default` can change meaning across a version while the code still compiles.** hickory 0.24's
+  `ResolverConfig::default()` was Google Public DNS; in 0.26 it is a derived `Default` with **no** nameservers, which hickory documents
+  as "a nonfunctional resolver". The 0.26 migration (`a081a45`, shipped in v0.6.0) kept passing it to the resolver that looked up a
+  nameserver given by host name, so `dog example.com @dns.google` failed on every transport with `no connections available` until
+  v0.7.15. A host name is now resolved by the OS (`tokio::net::lookup_host`), as `man/dog.1.md` always said, and the smoke test checks it.
+  On a migration, grep for every `default()` / `new()` of the dependency's types and read what each now returns.
 - **Read the release notes for a major bump.** `actions/checkout` 7 blocks checking out fork PRs under `pull_request_target` and
   `workflow_run`, which we do not use; `extractions/setup-just` 4 had no notes. A workflow change is tested by its own PR's CI.
 - **`cargo audit` runs in three places:** `security.yml` in CI (push to `master`, PRs touching `Cargo.toml` or `Cargo.lock`, **weekly on
