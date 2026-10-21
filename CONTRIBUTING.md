@@ -97,7 +97,11 @@ in a Fedora container, so a spec that parses but cannot build fails on the PR an
 ## Releases
 
 1. **A release needs no bump of its own.** The last PR to merge already bumped the version, so `master` is at the version
-   to release. Check with `just version-check`: it should report a bump past the previous tag.
+   to release. Check with `python3 scripts/version_gate.py` (no `--base`): it should report a bump past the previous tag.
+   Plain `just version-check` compares with `origin/master`, so on `master` itself it always fails.
+   **Then check nothing in `Cargo.lock` is yanked:** `cargo publish --dry-run --locked` warns `package ... is yanked`.
+   CI does not catch a yank: `cargo audit` reports it only as a warning. If one is, `cargo update -p <crate>` in a PR first
+   (v0.7.16 exists because tokio 1.54.0 was yanked two days after it was locked).
 2. Tag the tip of `master` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`. After the tag, `master` stays
    at that version until the next PR bumps it.
 3. The `Release` workflow checks the tag against `Cargo.toml` and `Cargo.lock`, runs the full CI suite, then builds
