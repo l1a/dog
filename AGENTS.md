@@ -152,6 +152,11 @@ something a user sees, in which case it follows the questions above.
   shown to fail. Every case must name the message it expects, or it can pass for an unrelated reason.
 - **`timeout-minutes` bounds a job that is running and hung. It does not count time spent waiting for a runner**, so it cannot
   shorten a stall in GitHub's queue (about 15 minutes before the job is cancelled). Rerun cancelled jobs once the queue clears.
+  **A job cancelled with no runner says why in its annotations**, and githubstatus.com may not:
+  `gh api repos/l1a/dog/check-runs/<job id>/annotations`. On 2026-10-21 `macos-latest` (arm64) jobs were cancelled six times with
+  "The job was not acquired by Runner of type hosted even after multiple attempts" and "Due to capacity constraints, jobs
+  targeting macOS arm64 runners may experience longer queue times", while the status page said "All Systems Operational".
+  `ci_gate.py` correctly failed `CI OK` each time. Re-run with `gh run rerun <run id> --failed`; it keeps the jobs that passed.
 - **`security.yml`** runs `cargo audit` on dependency changes and weekly.
 - **The hickory crates must be updated together.** `hickory-resolver`, `hickory-net` and `hickory-proto` are released as a set, and a
   newer resolver does not compile against an older net or proto even though its manifest allows the older one. Dependabot's
@@ -193,6 +198,8 @@ something a user sees, in which case it follows the questions above.
 - **`cargo audit` runs in three places:** `security.yml` in CI (push to `master`, PRs touching `Cargo.toml` or `Cargo.lock`, **weekly on
   Sundays**, manually), which fails on vulnerabilities but not on warnings (unmaintained, unsound, yanked); `just pr`, advisory and only
   if `cargo-audit` is installed; and by hand. It is **not** part of `CI OK`, so it informs and does not block a merge.
+  **So nothing in CI catches a yanked crate.** tokio 1.54.0 was yanked two days after #40 locked it, and only
+  `cargo publish --dry-run` mentioned it. The release steps in `CONTRIBUTING.md` now check for one before tagging.
 - **`datetime` was removed (2021-04-01 was its last release, no advisory named it).** It was a build dependency whose only use was a
   build date, reachable only for a release build with a `-pre` version, which `version_gate.py` rejects, so it was dead code. The
   `--version` string is now just the version, plus a warning on debug builds: no Git hash and no build date, so a build does not need
