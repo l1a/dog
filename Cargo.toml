@@ -21,7 +21,7 @@ exclude = [
     "/.claude", "/WIP.md",
 ]
 license = "GPL-3.0-or-later"
-version = "0.7.16"
+version = "0.8.0"
 
 
 [[bin]]

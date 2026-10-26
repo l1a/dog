@@ -46,7 +46,7 @@ use log::*;
 
 use crate::options::ANY_FALLBACK_TYPES;
 use hickory_resolver::proto::rr::RecordType;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 #[allow(unused_imports)]
 use std::net::{IpAddr, SocketAddr};
@@ -185,6 +185,11 @@ async fn run(
     let timer = if verbose { Some(Instant::now()) } else { None };
 
     let mut errored = false;
+    // A default query asks for A and AAAA. An empty family is omitted when the
+    // other family answered, and reported only when neither query returned a record.
+    let mut answered: HashSet<String> = HashSet::new();
+    let mut hard_errors: HashSet<String> = HashSet::new();
+    let mut empty_family: HashMap<String, hickory_resolver::net::NetError> = HashMap::new();
 
     let local_host_hints = match hints::LocalHosts::load() {
         Ok(lh) => lh,
@@ -422,6 +427,7 @@ async fn run(
 
         match result {
             Ok(response) => {
+                answered.insert(domain.clone());
                 if verbose {
                     format.print(vec![response], None);
                 } else {
@@ -440,11 +446,26 @@ async fn run(
                         format.print_error(&e);
                         errored = true;
                     }
+                } else if requests.inputs.default_address_query && e.is_no_records_found() {
+                    empty_family.entry(domain.clone()).or_insert(e);
                 } else {
+                    hard_errors.insert(domain.clone());
                     format.print_error(&e);
                     errored = true;
                 }
             }
+        }
+    }
+
+    if requests.inputs.default_address_query {
+        let mut missed: Vec<_> = empty_family.into_iter().collect();
+        missed.sort_by(|a, b| a.0.cmp(&b.0));
+        for (domain, error) in missed {
+            if answered.contains(&domain) || hard_errors.contains(&domain) {
+                continue;
+            }
+            format.print_error(&error);
+            errored = true;
         }
     }
 

@@ -24,7 +24,7 @@ EXAMPLES
 ========
 
 `dog example.net`
-: Query the `A` record of a domain using default settings
+: Query the `A` and `AAAA` records of a domain using default settings
 
 `dog example.net MX`
 : ...looking up `MX` records instead
@@ -54,7 +54,7 @@ QUERY OPTIONS
 `--class <CLASS>`
 : Network class of the DNS record being queried (`IN`, `CH`, `HS`)
 
-By default, dog will request A records using the system default resolver. At least one domain name must be passed — dog will not automatically query the root nameservers.
+By default, dog will request A and AAAA records using the system default resolver. A missing address family is left out when the other one answered; dog reports an error only when neither query returned a record. At least one domain name must be passed — dog will not automatically query the root nameservers.
 
 Query options passed in using a command-line option, such as ‘`--query lookup.dog`’ or ‘`--type MX`’, or as plain arguments, such as ‘`lookup.dog`’ or ‘`MX`’. dog will make an intelligent guess as to what plain arguments mean (`MX` is quite clearly a type), which makes it easier to compose ad-hoc queries quickly. If precision is desired, use the long-form options.
 
@@ -141,7 +141,7 @@ SHORTCUTS
 Instead of using the `-q`, `-t`, and `-n` flags, you can provide the arguments directly:
 
 `dog lookup.dog`
-: Query a domain
+: Query a domain for its A and AAAA records
 
 `dog lookup.dog MX`
 : Query a domain for a specific type

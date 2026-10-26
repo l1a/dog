@@ -267,7 +267,10 @@ something a user sees, in which case it follows the questions above.
   writable host directory, or a later host-side write fails and a check silently compares stale files.
 - **Homebrew is verified by `packaging.yml`'s `homebrew` job** (`brew audit --strict`, `brew install --HEAD`, `brew test`) through a
   throwaway local tap, because Homebrew only installs formulae from a tap. It cannot be run locally here (no brew), so that job
-  is the first real test of the formula.
+  is the first real test of the formula. `Homebrew/actions/setup-homebrew@main` tracks rolling `stable`. **Since Homebrew 7.0.11
+  (2026-10-26, Homebrew/brew#24352), `brew audit` no longer implicitly trusts a fully-qualified third-party formula** — only
+  `install`/`reinstall`/`upgrade` do — so the job runs `brew trust --formula l1a/test/dog` before audit. Prefer that over
+  trusting the whole throwaway tap. PR #43 failed on audit until this was added.
 - Packaging is **not** a required check, so a skipped job blocks nothing, and `packaging.yml`, `metadata.yml` and `security.yml` skip
   their jobs for a PR with nothing to check. They do **not** use `on.pull_request.paths`, because every PR bumps `Cargo.toml` and
   `Cargo.lock`, which those filters list, so a docs-only PR still started the COPR, AUR and Homebrew builds. Each has a `changes` job

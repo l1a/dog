@@ -178,6 +178,11 @@ pub struct Inputs {
     /// Whether the user requested an "ANY" query.
     pub any_query: bool,
 
+    /// Set when no record type was given, so the query is A and AAAA.
+    ///
+    /// A missing address family is not an error when the other one answered.
+    pub default_address_query: bool,
+
     /// The transport protocol to use.
     pub transport_type: Option<TransportType>,
 
@@ -277,6 +282,8 @@ impl Inputs {
     fn load_fallbacks(&mut self) {
         if self.record_types.is_empty() {
             self.record_types.push(RecordType::A);
+            self.record_types.push(RecordType::AAAA);
+            self.default_address_query = true;
         }
     }
 
@@ -669,8 +676,9 @@ mod test {
         fn fallbacks() -> Self {
             Inputs {
                 domains: vec![ /* No domains by default */ ],
-                record_types: vec![RecordType::A],
+                record_types: vec![RecordType::A, RecordType::AAAA],
                 any_query: false,
+                default_address_query: true,
                 transport_type: None,
                 nameservers: vec![],
             }
@@ -777,6 +785,34 @@ mod test {
     }
 
     #[test]
+    fn explicit_type_is_not_the_address_default() {
+        let options = Options::getopts(&["lookup.dog", "A"]).unwrap();
+        assert_eq!(
+            options.requests.inputs,
+            Inputs {
+                domains: vec!["lookup.dog".to_string()],
+                record_types: vec![RecordType::A],
+                default_address_query: false,
+                ..Inputs::fallbacks()
+            }
+        );
+    }
+
+    #[test]
+    fn reverse_lookup_sets_ptr() {
+        let options = Options::getopts(&["1.1.1.1"]).unwrap();
+        assert_eq!(
+            options.requests.inputs,
+            Inputs {
+                domains: vec!["1.1.1.1.in-addr.arpa".to_string()],
+                record_types: vec![RecordType::PTR],
+                default_address_query: false,
+                ..Inputs::fallbacks()
+            }
+        );
+    }
+
+    #[test]
     fn domain_and_type() {
         let options = Options::getopts(&["lookup.dog", "SOA"]).unwrap();
         assert_eq!(
@@ -784,6 +820,7 @@ mod test {
             Inputs {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::SOA],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -797,6 +834,7 @@ mod test {
             Inputs {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::SOA],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -823,6 +861,7 @@ mod test {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::NS],
                 nameservers: vec!["1.1.1.1".to_string()],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -845,6 +884,7 @@ mod test {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::SOA],
                 nameservers: vec!["1.1.1.1".to_string()],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -867,6 +907,7 @@ mod test {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::SOA],
                 nameservers: vec!["1.1.1.1".to_string()],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -881,6 +922,7 @@ mod test {
             Inputs {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::SRV, RecordType::AAAA],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -895,6 +937,7 @@ mod test {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::SOA],
                 nameservers: vec!["1.1.1.1".to_string()],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -908,6 +951,7 @@ mod test {
             Inputs {
                 domains: vec!["lookup.dog".to_string()],
                 record_types: vec![RecordType::SOA, RecordType::MX],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
@@ -1013,6 +1057,7 @@ mod test {
                     RecordType::KEY,
                     RecordType::SIG,
                 ],
+                default_address_query: false,
                 ..Inputs::fallbacks()
             }
         );
