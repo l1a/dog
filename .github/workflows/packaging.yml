@@ -177,6 +177,11 @@ jobs:
           python3 scripts/render_packaging.py --target brew --version 0.0.1 --sha256 "$sha" \
             --out "$(brew --repository l1a/test)/Formula/dog.rb"
 
+      # Homebrew 7.0.11 stopped implicitly trusting a fully-qualified formula for brew audit
+      # (only install/reinstall/upgrade still do). Trust just this throwaway formula.
+      - name: Trust the throwaway formula
+        run: brew trust --formula l1a/test/dog
+
       - name: Audit
         run: brew audit --strict --formula l1a/test/dog
 
