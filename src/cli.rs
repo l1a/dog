@@ -28,7 +28,7 @@ pub fn build_cli() -> Command {
         .after_help(
             "Shortcuts:
   Instead of using the -q, -t, and -n flags, you can provide the arguments directly:
-  dog lookup.dog             Query a domain
+  dog lookup.dog             Query a domain for A and AAAA records
   dog lookup.dog MX          Query a domain for a specific type
   dog lookup.dog @8.8.8.8    Query a domain using a specific nameserver
   dog 1.1.1.1                Perform a reverse lookup for an IP address",
@@ -47,7 +47,7 @@ pub fn build_cli() -> Command {
             Arg::new("type")
                 .short('t')
                 .long("type")
-                .help("Type of the DNS record being queried")
+                .help("Type of the DNS record being queried (default: A and AAAA)")
                 .value_name("TYPE")
                 .action(ArgAction::Append)
                 .ignore_case(true)

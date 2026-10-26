@@ -14,7 +14,7 @@
 dog takes its arguments the way you would say them: the name, the record type and the nameserver, in any order. It prints colourful, readable answers, speaks encrypted DNS, and gives scripts a JSON format and documented exit statuses.
 
 ```sh
-dog example.com               # A records, from your system's nameserver
+dog example.com               # A and AAAA records, from your system's nameserver
 dog example.com MX            # a different record type
 dog example.com MX @1.1.1.1   # ask a specific nameserver
 dog 1.1.1.1                   # reverse lookup (PTR)
@@ -26,11 +26,13 @@ dog -1 example.com            # short: just the answer data
 
 ```text
 $ dog example.com @1.1.1.1
-A example.com. 34s   104.20.23.154
-A example.com. 34s   172.66.147.243
+A example.com. 11s   104.20.23.154
+A example.com. 11s   172.66.147.243
+AAAA example.com. 2m27s   2606:4700:10::6814:179a
+AAAA example.com. 2m27s   2606:4700:10::ac42:93f3
 
 $ dog 1.1.1.1
-PTR 1.1.1.1.in-addr.arpa. 9m50s   one.one.one.one.
+PTR 1.1.1.1.in-addr.arpa. 16m31s   one.one.one.one.
 ```
 
 ## Features
