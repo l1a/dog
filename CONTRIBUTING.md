@@ -64,6 +64,7 @@ The man page needs [`pandoc`](https://pandoc.org/).
 ```sh
 just          # build, then fmt check, clippy -D warnings, and tests
 just man      # build the man page into target/man
+just clean    # remove build output
 ```
 
 `just clippy` runs exactly what CI runs, so a clean local run means a clean CI run. A new Rust release can

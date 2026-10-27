@@ -37,6 +37,10 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 @check:
     cargo check
 
+# remove build output (the binary, the tests and the rendered man page)
+@clean:
+    cargo clean
+
 
 #---------------#
 # running tests #
