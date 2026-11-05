@@ -102,7 +102,9 @@ pub fn build_cli() -> Command {
                 .long("class")
                 .help("Network class of the DNS record being queried (IN, CH, HS)")
                 .value_name("CLASS")
-                .action(ArgAction::Append),
+                .action(ArgAction::Append)
+                .ignore_case(true)
+                .value_parser(["IN", "CH", "HS"]),
         )
         .next_help_heading("Sending options")
         .arg(
@@ -110,7 +112,9 @@ pub fn build_cli() -> Command {
                 .long("edns")
                 .help("Whether to OPT in to EDNS (disable, hide, show)")
                 .value_name("SETTING")
-                .action(ArgAction::Set),
+                .action(ArgAction::Set)
+                .ignore_case(true)
+                .value_parser(["disable", "hide", "show"]),
         )
         .arg(
             Arg::new("txid")

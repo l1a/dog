@@ -73,7 +73,7 @@ SENDING OPTIONS
 : Set the transaction ID to a specific value.
 
 `-Z <TWEAKS>`
-: Set uncommon protocol tweaks.
+: Set uncommon protocol tweaks: `aa` (`authoritative`) sets the AA header bit; `ad` (`authentic`) sets the AD header bit; `cd` (`checking-disabled`) sets the CD header bit; `do` (`dnssec-ok`) sets the DNSSEC OK bit in the EDNS OPT record; `bufsize=<NUMBER>` sets the EDNS UDP payload size.
 
 
 PROTOCOL OPTIONS

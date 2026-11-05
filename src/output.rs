@@ -89,7 +89,19 @@ impl OutputFormat {
     /// settings. If the duration has been measured, it should also be
     /// printed. Returns `false` if there were no results to print, and `true`
     /// otherwise.
+    #[allow(dead_code)]
     pub fn print(self, responses: Vec<Lookup>, duration: Option<Duration>) -> bool {
+        self.print_with_edns(responses, duration, false)
+    }
+
+    /// Prints the entirety of the output, optionally including the EDNS OPT
+    /// pseudo-record when `--edns=show` is active.
+    pub fn print_with_edns(
+        self,
+        responses: Vec<Lookup>,
+        duration: Option<Duration>,
+        show_edns: bool,
+    ) -> bool {
         match self {
             Self::Short(_) => {
                 let all_answers = responses
@@ -132,6 +144,11 @@ impl OutputFormat {
                         for a in response.answers() {
                             table.add_row(a, Section::Answer);
                         }
+                        if show_edns {
+                            if let Some(edns) = response.message().edns.as_ref() {
+                                table.add_edns_row(edns);
+                            }
+                        }
                         stdout::finish(write!(&mut writer, "{}", table.render()));
                     }
                     stdout::finish(writer.flush());
@@ -140,6 +157,11 @@ impl OutputFormat {
                         let mut table = Table::new(uc.palette(), tf);
                         for a in response.answers() {
                             table.add_row(a, Section::Answer);
+                        }
+                        if show_edns {
+                            if let Some(edns) = response.message().edns.as_ref() {
+                                table.add_edns_row(edns);
+                            }
                         }
                         stdout::emit(&table.render());
                     }
@@ -159,7 +181,7 @@ impl OutputFormat {
     pub fn print_error(self, error: &ResolveError) {
         match self {
             Self::Short(..) | Self::Text(..) => {
-                eprintln!("Error: {error}");
+                eprintln!("Error: {}", sanitize_for_terminal(&error.to_string()));
             }
 
             Self::JSON => {
@@ -167,6 +189,25 @@ impl OutputFormat {
             }
         }
     }
+}
+
+/// Escapes ASCII C0 (`0x00..=0x1F`, `0x7F`) and Unicode C1 (`U+0080..=U+009F`)
+/// control characters so untrusted DNS data or hostnames cannot inject
+/// terminal escape sequences.
+pub fn sanitize_for_terminal(input: &str) -> String {
+    if !input.chars().any(char::is_control) {
+        return input.to_string();
+    }
+
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        if c.is_control() {
+            out.extend(c.escape_default());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Renders the `--json` output for a set of responses: each inner list is
@@ -204,7 +245,7 @@ impl TextFormat {
     /// type contains wildly different data, so the format of the summary
     /// depends on what record it’s for.
     pub fn record_payload_summary(record: &hickory_resolver::proto::rr::RData) -> String {
-        record.to_string()
+        sanitize_for_terminal(&record.to_string())
     }
 
     /// Formats a duration depending on whether it should be displayed as
@@ -330,6 +371,18 @@ mod test {
         assert_eq!(
             render_error_json("bad \"thing\"\n\u{1}\u{2028} é"),
             expected
+        );
+    }
+
+    #[test]
+    fn sanitize_terminal_escapes() {
+        assert_eq!(
+            sanitize_for_terminal("normal.example.com. 日本 🐕"),
+            "normal.example.com. 日本 🐕"
+        );
+        assert_eq!(
+            sanitize_for_terminal("evil\x1b[31mred\x1b]52;c;YWFh\x07\r\n\u{9b}2J"),
+            r"evil\u{1b}[31mred\u{1b}]52;c;YWFh\u{7}\r\n\u{9b}2J"
         );
     }
 }

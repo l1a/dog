@@ -22,11 +22,12 @@
 use std::fmt::Display;
 use std::time::Duration;
 
+use hickory_resolver::proto::op::Edns;
 use hickory_resolver::proto::rr::{Record, RecordType};
 use std::fmt::Write;
 
 use crate::colours::{Colours, Paint};
-use crate::output::TextFormat;
+use crate::output::{sanitize_for_terminal, TextFormat};
 
 /// A **table** is built up from all the response records present in a DNS
 /// packet. It then gets displayed to the user.
@@ -81,7 +82,7 @@ impl Table {
     pub fn add_row(&mut self, record: &Record, section: Section) {
         let data = &record.data;
         let qtype = self.coloured_record_type(record);
-        let qname = record.name.to_string();
+        let qname = sanitize_for_terminal(&record.name.to_string());
         let summary = TextFormat::record_payload_summary(data);
         let ttl = Some(self.text_format.format_duration(record.ttl));
         self.rows.push(Row {
@@ -89,6 +90,26 @@ impl Table {
             qname,
             ttl,
             section,
+            summary,
+        });
+    }
+
+    /// Adds a row representing an EDNS OPT pseudo-record (`--edns=show`).
+    pub fn add_edns_row(&mut self, edns: &Edns) {
+        let qtype = paint_styled(self.colours.default, "OPT");
+        let qname = ".".to_string();
+        let flags = if edns.flags().dnssec_ok { "do" } else { "none" };
+        let summary = format!(
+            "UDP payload: {}, version: {}, flags: {}",
+            edns.max_payload(),
+            edns.version(),
+            flags
+        );
+        self.rows.push(Row {
+            qtype,
+            qname,
+            ttl: None,
+            section: Section::Answer,
             summary,
         });
     }
@@ -110,7 +131,7 @@ impl Table {
                     r.qtype,
                     self.colours.qname.paint(&r.qname)
                 );
-                output.push_str(&" ".repeat(qname_len - r.qname.len()));
+                output.push_str(&" ".repeat(qname_len - r.qname.chars().count()));
 
                 if let Some(ttl) = &r.ttl {
                     output.push_str(&" ".repeat(ttl_len - ttl.len()));
@@ -180,7 +201,11 @@ impl Table {
 
     /// Returns the maximum length of a qname string.
     fn max_qname_len(&self) -> usize {
-        self.rows.iter().map(|r| r.qname.len()).max().unwrap_or(0)
+        self.rows
+            .iter()
+            .map(|r| r.qname.chars().count())
+            .max()
+            .unwrap_or(0)
     }
 
     /// Returns the maximum length of a TTL string.

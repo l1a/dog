@@ -15,10 +15,11 @@ cargo build --release
 The `l1a/dog` fork relies heavily on the [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns) crate for all DNS parsing and networking. 
 
 - `src/` - CLI binary source code
-  - `main.rs` - Application entry point and `hickory-resolver` orchestration
+  - `main.rs` - Application entry point and `hickory-resolver` orchestration (`DogDnsHandle` wrapping `RetryDnsHandle<NameServerPool>` and `CachingClient`)
   - `options.rs` - Command-line argument parsing
-  - `output.rs` - Formatting DNS responses (JSON and Text)
+  - `output.rs` - Formatting DNS responses (JSON and Text, including terminal control-character sanitization)
   - `table.rs` - Pretty-printing tables for terminal output
+  - `hints.rs` - Bounded `/etc/hosts` parsing for advisory local-hostname hints
   - `stdout.rs` - The only way to write to standard output. Never use `print!` or `println!` in `src/`: Rust ignores `SIGPIPE`, so they
     panic (exit 101) on `dog ... | head`. `stdout::emit*` exits quietly with status 0 when the reader has gone; `#![deny(clippy::print_stdout)]`
     enforces it and `tests/broken_pipe.rs` covers it. (`eprintln!` is fine.)
@@ -30,7 +31,9 @@ cargo test
 ```
 
 The test suite covers:
-- CLI argument parsing (`src/options.rs`)
+- CLI argument parsing (`src/options.rs`), nameserver/SNI helpers (`src/main.rs`), terminal sanitization (`src/output.rs`), and `/etc/hosts` hint parsing (`src/hints.rs`)
+- Broken-pipe handling (`tests/broken_pipe.rs`)
+- Offline loopback UDP/TCP DNS server tests (`tests/protocol_and_security.rs`) covering `-Z` protocol tweaks (`aa`, `ad`, `cd`, `do`, `bufsize`), `--txid`, `--edns`, `--class`, default UDP-to-TCP truncation fallback, `@ip:port`, and terminal escape sequence sanitization
 
 *Note: The original `dog` integration test suite (`xtests/`) and `dns/` wire format parsing tests are no longer applicable as parsing is entirely delegated to `hickory-resolver`.*
 - **CI's smoke test resolves a real name (`scripts/smoke_dns.sh`, from the `test` job on every OS in the matrix).** The unit tests are
@@ -243,7 +246,7 @@ something a user sees, in which case it follows the questions above.
   not the tag, and a published NEVRA cannot be recalled). It skips cleanly when the `COPR_*` secrets are absent. The man page
   is rendered from `man/dog.1.md` with pandoc at build time, not committed.
 - **Test the RPM for real, not just the SRPM.** `packaging.yml` runs `make -f .copr/Makefile srpm`, `dnf builddep`, then
-  `rpmbuild --rebuild` (which runs `%build`, `%install` and `%check`), checks the file list, installs it and runs `dog --version`.
+  `rpmbuild --rebuild` (which runs `%build`, `%install` and `%check`), checks the file list, installs it (`rpm -ivh --nodeps --nosignature`, since Fedora 45 / RPM 6 requires a signature by default and a local `rpmbuild` is unsigned) and runs `dog --version`.
   The same sequence runs locally in `podman run registry.fedoraproject.org/fedora:latest`. Install `git` before anything calls it;
   the Makefile installs it itself under mock.
 - **`--locked` is load-bearing** in the spec: COPR builds with network access and no vendoring, so `Cargo.lock` is the only thing
