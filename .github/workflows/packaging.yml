@@ -117,7 +117,9 @@ jobs:
                    /usr/share/fish/vendor_completions.d/dog.fish; do
             rpm -qlp "$rpm" | grep -qx "$f" || { echo "::error::the RPM is missing $f"; exit 1; }
           done
-          rpm -ivh --nodeps "$rpm"
+          # Fedora 45+ (RPM 6) enforces signature verification by default (%_pkgverify_level all),
+          # and a local `rpmbuild --rebuild` produces an unsigned package (COPR signs after build).
+          rpm -ivh --nodeps --nosignature "$rpm"
           version=$(python3 scripts/render_packaging.py --print-version)
           dog --version | tee /dev/stderr | grep -q "v$version"
 

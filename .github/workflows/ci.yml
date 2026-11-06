@@ -102,18 +102,12 @@ jobs:
     steps:
       # gcc: ring compiles C. git: build.rs no longer needs it, but actions/checkout clones with it when
       # present (and only downloads an archive without it), and the Fedora image does not ship it.
+      # rust & cargo: installed from Fedora's signed RPM repositories rather than piping sh.rustup.rs to sh.
       - name: Install dependencies (Fedora)
         if: matrix.container
-        run: dnf install -y git gcc
+        run: dnf install -y git gcc rust cargo
 
       - uses: actions/checkout@v7
-
-      # dtolnay/rust-toolchain does not work inside a bare container, so Fedora uses rustup.
-      - name: Install Rust (Fedora)
-        if: matrix.container
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Install Rust
         if: ${{ !matrix.container }}

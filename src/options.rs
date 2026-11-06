@@ -24,12 +24,26 @@ use std::net::IpAddr;
 
 use log::*;
 
-use hickory_resolver::proto::rr::RecordType;
+use hickory_resolver::proto::rr::{DNSClass, RecordType};
 
 use crate::output::{OutputFormat, TextFormat, UseColours};
 
 #[path = "cli.rs"]
 pub mod cli;
+
+/// How to handle EDNS OPT records in requests and output.
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Default)]
+pub enum EdnsMode {
+    /// Do not send an EDNS OPT record in the query.
+    Disable,
+
+    /// Send an EDNS OPT record, but hide the response OPT record in output.
+    #[default]
+    Hide,
+
+    /// Send an EDNS OPT record and display the response OPT record in output.
+    Show,
+}
 
 /// The command-line options used when running dog.
 #[derive(PartialEq, Debug)]
@@ -45,13 +59,32 @@ pub struct Options {
 }
 
 /// The set of requests to make.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(PartialEq, Debug, Default)]
 pub struct Requests {
     /// The inputs to generate requests from.
     pub inputs: Inputs,
 
-    /// Whether to request DNSSEC validation.
+    /// Whether to set the DNSSEC OK (DO) bit in the EDNS OPT record.
     pub dnssec: bool,
+
+    /// Whether to set the Authoritative Answer (AA) flag in the DNS header.
+    pub authoritative: bool,
+
+    /// Whether to set the Authentic Data (AD) flag in the DNS header.
+    pub authentic_data: bool,
+
+    /// Whether to set the Checking Disabled (CD) flag in the DNS header.
+    pub checking_disabled: bool,
+
+    /// Custom EDNS UDP payload size (`-Z bufsize=NUMBER`).
+    pub udp_payload_size: Option<u16>,
+
+    /// Explicit DNS transaction ID (`--txid=NUMBER`).
+    pub txid: Option<u16>,
+
+    /// EDNS OPT record handling (`--edns=disable|hide|show`).
+    pub edns: EdnsMode,
 }
 
 /// The transport protocol to use for DNS queries.
@@ -147,6 +180,11 @@ impl Requests {
         transport_type: Option<TransportType>,
     ) -> Result<Self, OptionsError> {
         let mut dnssec = false;
+        let mut authoritative = false;
+        let mut authentic_data = false;
+        let mut checking_disabled = false;
+        let mut udp_payload_size = None;
+
         let tweaks = matches
             .get_many::<String>("Z")
             .unwrap_or_default()
@@ -155,14 +193,68 @@ impl Requests {
         for tweak in tweaks {
             if tweak.eq_ignore_ascii_case("do") || tweak.eq_ignore_ascii_case("dnssec-ok") {
                 dnssec = true;
+            } else if tweak.eq_ignore_ascii_case("aa")
+                || tweak.eq_ignore_ascii_case("authoritative")
+            {
+                authoritative = true;
+            } else if tweak.eq_ignore_ascii_case("ad") || tweak.eq_ignore_ascii_case("authentic") {
+                authentic_data = true;
+            } else if tweak.eq_ignore_ascii_case("cd")
+                || tweak.eq_ignore_ascii_case("checking-disabled")
+            {
+                checking_disabled = true;
+            } else if let Some((_, val)) = tweak.split_once('=') {
+                if tweak[..tweak.find('=').unwrap_or(0)].eq_ignore_ascii_case("bufsize") {
+                    if let Ok(size) = val.parse::<u16>() {
+                        udp_payload_size = Some(size);
+                    } else {
+                        return Err(OptionsError::InvalidTweak(tweak));
+                    }
+                } else {
+                    return Err(OptionsError::InvalidTweak(tweak));
+                }
             } else {
                 return Err(OptionsError::InvalidTweak(tweak));
             }
         }
 
+        let txid = if let Some(txid_str) = matches.get_one::<String>("txid") {
+            let parsed = if let Some(hex) = txid_str
+                .strip_prefix("0x")
+                .or_else(|| txid_str.strip_prefix("0X"))
+            {
+                u16::from_str_radix(hex, 16)
+            } else {
+                txid_str.parse::<u16>()
+            };
+            match parsed {
+                Ok(id) => Some(id),
+                Err(_) => return Err(OptionsError::InvalidTxid(txid_str.clone())),
+            }
+        } else {
+            None
+        };
+
+        let edns = match matches.get_one::<String>("edns") {
+            None => EdnsMode::Hide,
+            Some(s) if s.eq_ignore_ascii_case("disable") => EdnsMode::Disable,
+            Some(s) if s.eq_ignore_ascii_case("hide") => EdnsMode::Hide,
+            Some(s) if s.eq_ignore_ascii_case("show") => EdnsMode::Show,
+            Some(other) => return Err(OptionsError::InvalidEdns(other.clone())),
+        };
+
         let inputs = Inputs::deduce(matches, transport_type)?;
 
-        Ok(Self { inputs, dnssec })
+        Ok(Self {
+            inputs,
+            dnssec,
+            authoritative,
+            authentic_data,
+            checking_disabled,
+            udp_payload_size,
+            txid,
+            edns,
+        })
     }
 }
 
@@ -174,6 +266,9 @@ pub struct Inputs {
 
     /// The list of DNS record types to query for.
     pub record_types: Vec<RecordType>,
+
+    /// The list of DNS classes to query for.
+    pub classes: Vec<DNSClass>,
 
     /// Whether the user requested an "ANY" query.
     pub any_query: bool,
@@ -232,6 +327,19 @@ impl Inputs {
             }
         }
 
+        let classes = matches
+            .get_many::<String>("class")
+            .unwrap_or_default()
+            .cloned()
+            .collect::<Vec<_>>();
+        for class_name in classes {
+            if let Some(dns_class) = parse_dns_class(&class_name) {
+                self.add_class(dns_class);
+            } else {
+                return Err(OptionsError::InvalidClass(class_name));
+            }
+        }
+
         let nameservers = matches
             .get_many::<String>("nameserver")
             .unwrap_or_default()
@@ -255,7 +363,10 @@ impl Inputs {
             if let Some(nameserver) = argument.strip_prefix('@') {
                 self.add_nameserver(nameserver);
             } else if is_constant_name(&argument) {
-                if argument.eq_ignore_ascii_case("ANY") {
+                if let Some(dns_class) = parse_dns_class(&argument) {
+                    trace!("Got qclass -> {argument:?}");
+                    self.add_class(dns_class);
+                } else if argument.eq_ignore_ascii_case("ANY") {
                     self.add_type(RecordType::ANY);
                 } else if let Ok(record_type) = argument.to_uppercase().parse() {
                     trace!("Got qtype -> {argument:?}");
@@ -285,6 +396,9 @@ impl Inputs {
             self.record_types.push(RecordType::AAAA);
             self.default_address_query = true;
         }
+        if self.classes.is_empty() {
+            self.classes.push(DNSClass::IN);
+        }
     }
 
     /// Add a domain to the list of domains to query.
@@ -300,9 +414,27 @@ impl Inputs {
         self.record_types.push(rt);
     }
 
+    /// Add a DNS class to the list of classes to query.
+    fn add_class(&mut self, cls: DNSClass) {
+        self.classes.push(cls);
+    }
+
     /// Add a nameserver to the list of nameservers to use.
     fn add_nameserver(&mut self, input: &str) {
         self.nameservers.push(input.to_string());
+    }
+}
+
+/// Parses a DNS query class name (`IN`, `CH`, `HS`).
+fn parse_dns_class(input: &str) -> Option<DNSClass> {
+    if input.eq_ignore_ascii_case("IN") {
+        Some(DNSClass::IN)
+    } else if input.eq_ignore_ascii_case("CH") {
+        Some(DNSClass::CH)
+    } else if input.eq_ignore_ascii_case("HS") {
+        Some(DNSClass::HS)
+    } else {
+        None
     }
 }
 
@@ -459,19 +591,29 @@ pub enum HelpReason {
 }
 
 /// Something wrong with the combination of options the user has picked.
+#[allow(clippy::enum_variant_names)]
 #[derive(PartialEq, Debug)]
 pub enum OptionsError {
     /// The query type is invalid.
     InvalidQueryType(String),
+    /// The query class is invalid.
+    InvalidClass(String),
     /// The protocol tweak is invalid.
     InvalidTweak(String),
+    /// The transaction ID is invalid.
+    InvalidTxid(String),
+    /// The EDNS setting is invalid.
+    InvalidEdns(String),
 }
 
 impl fmt::Display for OptionsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidQueryType(qt) => write!(f, "Invalid query type {qt:?}"),
+            Self::InvalidClass(cls) => write!(f, "Invalid query class {cls:?}"),
             Self::InvalidTweak(tw) => write!(f, "Invalid protocol tweak {tw:?}"),
+            Self::InvalidTxid(txid) => write!(f, "Invalid transaction ID {txid:?}"),
+            Self::InvalidEdns(edns) => write!(f, "Invalid EDNS setting {edns:?}"),
         }
     }
 }
@@ -677,6 +819,7 @@ mod test {
             Inputs {
                 domains: vec![ /* No domains by default */ ],
                 record_types: vec![RecordType::A, RecordType::AAAA],
+                classes: vec![DNSClass::IN],
                 any_query: false,
                 default_address_query: true,
                 transport_type: None,
@@ -1019,6 +1162,89 @@ mod test {
     fn dnssec_ok_alias() {
         let options = Options::getopts(&["dom.ain", "-Z", "dnssec-ok"]).unwrap();
         assert_eq!(options.requests.dnssec, true);
+    }
+
+    #[test]
+    fn protocol_tweaks_flags_and_bufsize() {
+        let options = Options::getopts(&[
+            "dom.ain",
+            "-Z",
+            "aa",
+            "-Z",
+            "ad",
+            "-Z",
+            "cd",
+            "-Z",
+            "bufsize=1400",
+        ])
+        .unwrap();
+        assert!(options.requests.authoritative);
+        assert!(options.requests.authentic_data);
+        assert!(options.requests.checking_disabled);
+        assert_eq!(options.requests.udp_payload_size, Some(1400));
+    }
+
+    #[test]
+    fn protocol_tweaks_long_names() {
+        let options = Options::getopts(&[
+            "dom.ain",
+            "-Z",
+            "authoritative",
+            "-Z",
+            "authentic",
+            "-Z",
+            "checking-disabled",
+        ])
+        .unwrap();
+        assert!(options.requests.authoritative);
+        assert!(options.requests.authentic_data);
+        assert!(options.requests.checking_disabled);
+    }
+
+    #[test]
+    fn invalid_bufsize_tweak() {
+        assert_eq!(
+            Options::getopts(&["dom.ain", "-Z", "bufsize=notanumber"]),
+            OptionsResult::InvalidOptions(OptionsError::InvalidTweak("bufsize=notanumber".into()))
+        );
+    }
+
+    #[test]
+    fn edns_modes() {
+        let disable = Options::getopts(&["dom.ain", "--edns=disable"]).unwrap();
+        assert_eq!(disable.requests.edns, EdnsMode::Disable);
+
+        let hide = Options::getopts(&["dom.ain", "--edns=hide"]).unwrap();
+        assert_eq!(hide.requests.edns, EdnsMode::Hide);
+
+        let show = Options::getopts(&["dom.ain", "--edns=show"]).unwrap();
+        assert_eq!(show.requests.edns, EdnsMode::Show);
+    }
+
+    #[test]
+    fn txid_decimal_and_hex() {
+        let dec = Options::getopts(&["dom.ain", "--txid=12345"]).unwrap();
+        assert_eq!(dec.requests.txid, Some(12345));
+
+        let hex = Options::getopts(&["dom.ain", "--txid=0xbeef"]).unwrap();
+        assert_eq!(hex.requests.txid, Some(0xbeef));
+
+        assert_eq!(
+            Options::getopts(&["dom.ain", "--txid=99999"]),
+            OptionsResult::InvalidOptions(OptionsError::InvalidTxid("99999".into()))
+        );
+    }
+
+    #[test]
+    fn class_named_and_free() {
+        let named = Options::getopts(&["version.bind", "TXT", "--class", "CH"]).unwrap();
+        assert_eq!(named.requests.inputs.classes, vec![DNSClass::CH]);
+
+        let free = Options::getopts(&["version.bind", "TXT", "ch", "HS"]).unwrap();
+        assert_eq!(
+            free.requests.inputs.classes,
+            vec![DNSClass::CH, DNSClass::HS]
+        );
     }
 
     // reverse lookup tests

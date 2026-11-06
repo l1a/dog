@@ -37,6 +37,9 @@ pub struct LocalHosts {
     hostnames: BTreeSet<String>,
 }
 
+/// Maximum bytes read from the system hosts file (16 MiB).
+const MAX_HOSTS_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
 impl LocalHosts {
     /// Loads the set of hostnames from the hosts file path on Unix.
     #[cfg(unix)]
@@ -48,8 +51,14 @@ impl LocalHosts {
     /// Loads the set of hostnames from the hosts file path on Windows.
     #[cfg(windows)]
     pub fn load() -> io::Result<Self> {
+        use std::env;
+        use std::path::PathBuf;
+
         debug!("Reading hints from /etc/hosts equivalent");
-        Self::load_from_file(File::open("C:\\Windows\\system32\\drivers\\etc\\hosts")?)
+        let root =
+            env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+        let path = root.join(r"System32\drivers\etc\hosts");
+        Self::load_from_file(File::open(path)?)
     }
 
     /// On other machines, load an empty set of hostnames that match nothing.
@@ -63,16 +72,15 @@ impl LocalHosts {
     /// standard `/etc/hosts` format, with one entry per line, separated by
     /// whitespace, where the first field is the address and the remaining
     /// fields are hostname aliases, and `#` signifies a comment.
-    #[allow(clippy::assertions_on_constants, clippy::manual_assert)]
     fn load_from_file(file: File) -> io::Result<Self> {
-        use std::io::{BufRead, BufReader};
+        use std::io::{BufReader, Read};
 
-        if cfg!(test) {
-            panic!("load_from_file() called from test code");
-        }
+        let reader = BufReader::new(file.take(MAX_HOSTS_FILE_BYTES));
+        Self::load_from_reader(reader)
+    }
 
-        let reader = BufReader::new(file);
-
+    /// Reads hostnames from any buffered reader.
+    fn load_from_reader<R: io::BufRead>(reader: R) -> io::Result<Self> {
         let mut hostnames = BTreeSet::new();
         for line in reader.lines() {
             let mut line = line?;
@@ -82,7 +90,10 @@ impl LocalHosts {
             }
 
             for hostname in line.split_ascii_whitespace().skip(1) {
-                hostnames.insert(hostname.to_string());
+                let normalized = normalize_hostname(hostname);
+                if !normalized.is_empty() {
+                    hostnames.insert(normalized);
+                }
             }
         }
 
@@ -92,7 +103,36 @@ impl LocalHosts {
 
     /// Queries this set of hostnames to see if the given name, which is about
     /// to be queried for, exists within the file.
-    pub fn contains(&self, hostname_in_query: &String) -> bool {
-        self.hostnames.contains(hostname_in_query)
+    pub fn contains(&self, hostname_in_query: &str) -> bool {
+        self.hostnames
+            .contains(&normalize_hostname(hostname_in_query))
+    }
+}
+
+fn normalize_hostname(name: &str) -> String {
+    name.trim_end_matches('.').to_ascii_lowercase()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn parses_hosts_and_strips_comments() {
+        let sample = "\
+# comment line
+127.0.0.1   localhost localhost.localdomain # inline comment
+::1         ip6-localhost ip6-loopback
+10.0.0.5    Internal.Dev.Local.  alias-host
+";
+        let hosts = LocalHosts::load_from_reader(Cursor::new(sample)).unwrap();
+        assert!(hosts.contains("localhost"));
+        assert!(hosts.contains("LOCALHOST."));
+        assert!(hosts.contains("internal.dev.local"));
+        assert!(hosts.contains("alias-host"));
+        assert!(!hosts.contains("127.0.0.1"));
+        assert!(!hosts.contains("inline"));
+        assert!(!hosts.contains("nonexistent.local"));
     }
 }

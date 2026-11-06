@@ -202,4 +202,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release list --limit 1000 --json tagName --jq '.[20:][].tagName' \
-            | xargs -r -I{} gh release delete {} --yes --cleanup-tag
+            | while IFS= read -r tag; do
+                [ -n "$tag" ] && gh release delete --yes --cleanup-tag -- "$tag"
+              done

@@ -179,8 +179,11 @@ pr:
     # 3. The version is bumped past master and the last tag, and Cargo.lock agrees.
     info "Checking the version bump..."
     git fetch -q origin master
-    python3 scripts/version_gate.py --base {{base}} > /tmp/version-gate.$$ 2>&1 || { cat /tmp/version-gate.$$; rm -f /tmp/version-gate.$$; fail "Version not bumped past master and the last tag (Z for fixes/tests/docs/CI/deps, Y for new features; see CONTRIBUTING.md, Version numbers)"; }
-    grep -E '^(Cargo|version)' /tmp/version-gate.$$ | sed 's/^/    /'; rm -f /tmp/version-gate.$$
+    if ! VG_OUT=$(python3 scripts/version_gate.py --base {{base}} 2>&1); then
+        printf '%s\n' "$VG_OUT"
+        fail "Version not bumped past master and the last tag (Z for fixes/tests/docs/CI/deps, Y for new features; see CONTRIBUTING.md, Version numbers)"
+    fi
+    printf '%s\n' "$VG_OUT" | grep -E '^(Cargo|version)' | sed 's/^/    /'
     pass "Version bumped"
 
     # 4. The scripts' self-tests, which include the packaging templates still rendering and
@@ -332,23 +335,3 @@ merge-pr:
 @man-local: man
     mkdir -p ~/.local/share/man/man1
     cp "${CARGO_TARGET_DIR:-target}/man/dog.1" ~/.local/share/man/man1/
-
-
-#-----------#
-# packaging #
-#-----------#
-
-# create a distributable package
-zip desc exe="dog":
-    #!/usr/bin/env perl
-    use Archive::Zip;
-    -e 'target/release/{{ exe }}' || die 'Binary not built!';
-    -e 'target/man/dog.1' || die 'Man page not built!';
-    my $zip = Archive::Zip->new();
-    $zip->addFile('completions/dog.bash');
-    $zip->addFile('completions/dog.zsh');
-    $zip->addFile('completions/dog.fish');
-    $zip->addFile('target/man/dog.1', 'man/dog.1');
-    $zip->addFile('target/release/{{ exe }}', 'bin/{{ exe }}');
-    $zip->writeToFileNamed('dog-{{ desc }}.zip') == AZ_OK || die 'Zip write error!';
-    system 'unzip -l "dog-{{ desc }}".zip'
