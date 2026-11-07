@@ -49,7 +49,7 @@ text_any() {
     local out
     out=$("${dog[@]}" --color never "$name" ANY "@$server") || return 1
     head -n 5 <<<"$out"
-    grep -Eq "^(NS|SOA|A|AAAA|MX) +${name//./\\.}\\. " <<<"$out"
+    grep -Eq "^ *(NS|SOA|A|AAAA|MX) +${name//./\\.}\\. " <<<"$out"
 }
 
 # 2. JSON output: valid shape, and at least one answer in it.

@@ -31,9 +31,9 @@ cargo test
 ```
 
 The test suite covers:
-- CLI argument parsing (`src/options.rs`), nameserver/SNI helpers (`src/main.rs`), terminal sanitization (`src/output.rs`), and `/etc/hosts` hint parsing (`src/hints.rs`)
+- CLI argument parsing (`src/options.rs`), nameserver/SNI helpers (`src/main.rs`), terminal sanitization (`src/output.rs`), columnar table rendering (`src/table.rs`), and `/etc/hosts` hint parsing (`src/hints.rs`)
 - Broken-pipe handling (`tests/broken_pipe.rs`)
-- Offline loopback UDP/TCP DNS server tests (`tests/protocol_and_security.rs`) covering `-Z` protocol tweaks (`aa`, `ad`, `cd`, `do`, `bufsize`), `--txid`, `--edns`, `--class`, default UDP-to-TCP truncation fallback, `@ip:port`, and terminal escape sequence sanitization
+- Offline loopback UDP/TCP DNS server tests (`tests/protocol_and_security.rs`) covering `-Z` protocol tweaks (`aa`, `ad`, `cd`, `do`, `bufsize`), `--txid`, `--edns`, `--class`, default UDP-to-TCP truncation fallback, `@ip:port`, terminal escape sequence sanitization, and multi-response columnar table alignment
 
 *Note: The original `dog` integration test suite (`xtests/`) and `dns/` wire format parsing tests are no longer applicable as parsing is entirely delegated to `hickory-resolver`.*
 - **CI's smoke test resolves a real name (`scripts/smoke_dns.sh`, from the `test` job on every OS in the matrix).** The unit tests are

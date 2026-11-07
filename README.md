@@ -26,8 +26,8 @@ dog -1 example.com            # short: just the answer data
 
 ```text
 $ dog example.com @1.1.1.1
-A example.com. 11s   104.20.23.154
-A example.com. 11s   172.66.147.243
+   A example.com.   11s   104.20.23.154
+   A example.com.   11s   172.66.147.243
 AAAA example.com. 2m27s   2606:4700:10::6814:179a
 AAAA example.com. 2m27s   2606:4700:10::ac42:93f3
 
