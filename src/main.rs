@@ -636,14 +636,10 @@ async fn run(
         join_all(futures).await
     };
 
-    // Sort results by domain, qclass, then qtype to maintain output order and blocks
-    let mut sorted_results: Vec<_> = query_results.into_iter().flatten().collect();
-    sorted_results.sort_by_key(|(domain, qclass, qtype, _, _)| (domain.clone(), *qclass, *qtype));
-
     let show_edns = requests.edns == EdnsMode::Show;
 
-    // Process results in order
-    for (domain, qclass, qtype, result, elapsed) in sorted_results {
+    // Process results in query order
+    for (domain, qclass, qtype, result, elapsed) in query_results.into_iter().flatten() {
         if verbose {
             let nameservers_set: HashSet<String> = config
                 .name_servers()

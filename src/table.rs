@@ -147,7 +147,6 @@ impl Table {
     }
 
     /// Prints the formatted table to stdout.
-    #[allow(dead_code)]
     pub fn print(self, duration: Option<Duration>) {
         crate::stdout::emit(&self.render());
 
@@ -232,5 +231,76 @@ fn paint_styled<S: Display>(style: anstyle::Style, text: S) -> StyledString {
     StyledString {
         content,
         display_len,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use hickory_resolver::proto::rr::rdata::{A, AAAA, MX, NS, TXT};
+    use hickory_resolver::proto::rr::{Name, RData};
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::str::FromStr;
+
+    #[test]
+    fn aligns_columns_across_multiple_record_types_and_ttls() {
+        let mut table = Table::new(
+            Colours::plain(),
+            TextFormat {
+                format_durations: true,
+            },
+        );
+        let name = Name::from_str("example.net.").unwrap();
+
+        table.add_row(
+            &Record::from_rdata(
+                name.clone(),
+                300,
+                RData::A(A(Ipv4Addr::new(104, 20, 21, 8))),
+            ),
+            Section::Answer,
+        );
+        table.add_row(
+            &Record::from_rdata(
+                name.clone(),
+                300,
+                RData::AAAA(AAAA(Ipv6Addr::from_str("2606:4700:10::6814:1508").unwrap())),
+            ),
+            Section::Answer,
+        );
+        table.add_row(
+            &Record::from_rdata(
+                name.clone(),
+                86400,
+                RData::NS(NS(Name::from_str("hugh.ns.cloudflare.com.").unwrap())),
+            ),
+            Section::Answer,
+        );
+        table.add_row(
+            &Record::from_rdata(
+                name.clone(),
+                300,
+                RData::MX(MX::new(0, Name::from_str(".").unwrap())),
+            ),
+            Section::Answer,
+        );
+        table.add_row(
+            &Record::from_rdata(
+                name,
+                300,
+                RData::TXT(TXT::new(vec!["v=spf1 -all".to_string()])),
+            ),
+            Section::Answer,
+        );
+
+        let expected = concat!(
+            "   A example.net.      5m00s   104.20.21.8\n",
+            "AAAA example.net.      5m00s   2606:4700:10::6814:1508\n",
+            "  NS example.net. 1d0h00m00s   hugh.ns.cloudflare.com.\n",
+            "  MX example.net.      5m00s   0 .\n",
+            " TXT example.net.      5m00s   v=spf1 -all\n",
+        );
+
+        assert_eq!(table.render(), expected);
     }
 }

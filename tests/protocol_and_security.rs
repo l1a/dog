@@ -6,15 +6,15 @@
 
 use std::convert::TryFrom;
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpListener, UdpSocket};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, UdpSocket};
 use std::process::Command;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 
 use hickory_resolver::proto::op::{Edns, Message, MessageType, OpCode, ResponseCode};
-use hickory_resolver::proto::rr::rdata::{HINFO, TXT};
-use hickory_resolver::proto::rr::{DNSClass, Name, RData, Record};
+use hickory_resolver::proto::rr::rdata::{HINFO, MX, NS, TXT};
+use hickory_resolver::proto::rr::{DNSClass, Name, RData, Record, RecordType};
 
 fn dog_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_dog"))
@@ -322,4 +322,102 @@ fn terminal_escape_sequences_in_dns_response_are_sanitized() {
         "expected escaped control sequences in stdout, got: {}",
         stdout
     );
+}
+
+#[test]
+fn multiple_responses_render_in_single_aligned_table() {
+    let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind UDP");
+    socket
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("set timeout");
+    let addr = socket.local_addr().expect("local_addr");
+
+    let server = thread::spawn(move || {
+        for _ in 0..5 {
+            let mut buf = [0u8; 4096];
+            let (len, peer) = socket.recv_from(&mut buf).expect("recv_from");
+            let req = Message::from_vec(&buf[..len]).expect("decode DNS request");
+            let mut resp = base_response(&req);
+            let q = &req.queries[0];
+            let name = q.name().clone();
+            match q.query_type() {
+                RecordType::A => {
+                    resp.add_answer(Record::from_rdata(
+                        name,
+                        300,
+                        RData::A(Ipv4Addr::new(104, 20, 21, 8).into()),
+                    ));
+                }
+                RecordType::AAAA => {
+                    resp.add_answer(Record::from_rdata(
+                        name,
+                        300,
+                        RData::AAAA(
+                            Ipv6Addr::from_str("2606:4700:10::6814:1508")
+                                .unwrap()
+                                .into(),
+                        ),
+                    ));
+                }
+                RecordType::NS => {
+                    resp.add_answer(Record::from_rdata(
+                        name,
+                        86400,
+                        RData::NS(NS(Name::from_str("hugh.ns.cloudflare.com.").unwrap())),
+                    ));
+                }
+                RecordType::MX => {
+                    resp.add_answer(Record::from_rdata(
+                        name,
+                        300,
+                        RData::MX(MX::new(0, Name::from_str(".").unwrap())),
+                    ));
+                }
+                RecordType::TXT => {
+                    resp.add_answer(Record::from_rdata(
+                        name,
+                        300,
+                        RData::TXT(TXT::new(vec!["v=spf1 -all".to_string()])),
+                    ));
+                }
+                other => panic!("unexpected query type: {}", other),
+            }
+            let bytes = resp.to_vec().expect("encode DNS response");
+            socket.send_to(&bytes, peer).expect("send_to");
+        }
+    });
+
+    let ns_arg = format!("@{addr}");
+    let out = dog_bin()
+        .args([
+            "example.net",
+            "A",
+            "AAAA",
+            "NS",
+            "MX",
+            "TXT",
+            &ns_arg,
+            "-U",
+            "--color=never",
+        ])
+        .output()
+        .expect("run dog");
+
+    server.join().expect("server thread");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let expected = concat!(
+        "   A example.net.      5m00s   104.20.21.8\n",
+        "AAAA example.net.      5m00s   2606:4700:10::6814:1508\n",
+        "  NS example.net. 1d0h00m00s   hugh.ns.cloudflare.com.\n",
+        "  MX example.net.      5m00s   0 .\n",
+        " TXT example.net.      5m00s   v=spf1 -all\n",
+    );
+    assert_eq!(stdout, expected);
 }

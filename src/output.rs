@@ -20,7 +20,7 @@
 //! Text and JSON output.
 
 use std::env;
-use std::io::{self, BufWriter, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 use std::time::Duration;
 
 use hickory_resolver::lookup::Lookup;
@@ -133,43 +133,20 @@ impl OutputFormat {
                 stdout::emit_line(&render_json(&answers, duration));
             }
             Self::Text(uc, tf) => {
-                let total_records = responses
-                    .iter()
-                    .flat_map(hickory_resolver::lookup::Lookup::answers)
-                    .count();
-                if total_records > 100 {
-                    let mut writer = BufWriter::new(io::stdout());
-                    for response in responses {
-                        let mut table = Table::new(uc.palette(), tf);
-                        for a in response.answers() {
-                            table.add_row(a, Section::Answer);
-                        }
-                        if show_edns {
-                            if let Some(edns) = response.message().edns.as_ref() {
-                                table.add_edns_row(edns);
-                            }
-                        }
-                        stdout::finish(write!(&mut writer, "{}", table.render()));
+                let mut table = Table::new(uc.palette(), tf);
+
+                for response in responses {
+                    for a in response.answers() {
+                        table.add_row(a, Section::Answer);
                     }
-                    stdout::finish(writer.flush());
-                } else {
-                    for response in responses {
-                        let mut table = Table::new(uc.palette(), tf);
-                        for a in response.answers() {
-                            table.add_row(a, Section::Answer);
+                    if show_edns {
+                        if let Some(edns) = response.message().edns.as_ref() {
+                            table.add_edns_row(edns);
                         }
-                        if show_edns {
-                            if let Some(edns) = response.message().edns.as_ref() {
-                                table.add_edns_row(edns);
-                            }
-                        }
-                        stdout::emit(&table.render());
                     }
                 }
 
-                if let Some(duration) = duration {
-                    stdout::emit_line(&format!("Ran in {}ms", duration.as_millis()));
-                }
+                table.print(duration);
             }
         }
 
