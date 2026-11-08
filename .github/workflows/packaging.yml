@@ -160,7 +160,7 @@ jobs:
       - name: Point --HEAD at this checkout for the build test
         run: |
           set -euo pipefail
-          git branch -f master HEAD
+          git checkout -B master HEAD
           formula="$(brew --repository l1a/test)/Formula/dog.rb"
           python3 -c '
           import pathlib, sys
