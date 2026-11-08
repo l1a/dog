@@ -1,0 +1,201 @@
+.TH "DOG" "1" "" "dog 0.8.4" "DNS Client"
+
+.SH "NAME"
+.PP
+dog \-\- a command\-line DNS client
+
+.SH "SYNOPSIS"
+.PP
+`\f[CR]dog [OPTIONS] [\-\-] <arguments>\fP`
+.PP
+\fBdog\fP is a command\-line DNS client\.
+It has colourful output, supports the DNS\-over\-TLS and DNS\-over\-HTTPS protocols, and can emit JSON\.
+
+.SH "EXAMPLES"
+\fB`\f[CR]dog example\.net\fP`\fP
+.RS
+Query the `\f[CR]A\fP` and `\f[CR]AAAA\fP` records of a domain using default settings
+.RE
+\fB`\f[CR]dog example\.net MX\fP`\fP
+.RS
+\.\.\.looking up `\f[CR]MX\fP` records instead
+.RE
+\fB`\f[CR]dog example\.net MX @1\.1\.1\.1\fP`\fP
+.RS
+\.\.\.using a specific nameserver instead
+.RE
+\fB`\f[CR]dog example\.net MX @1\.1\.1\.1 \-T\fP`\fP
+.RS
+\.\.\.using TCP rather than UDP
+.RE
+\fB`\f[CR]dog \-q example\.net \-t MX \-n 1\.1\.1\.1 \-T\fP`\fP
+.RS
+As above, but using explicit arguments
+.RE
+
+.SH "QUERY OPTIONS"
+\fB`\f[CR]\-q\fP`, `\f[CR]\-\-query <HOST>\fP`\fP
+.RS
+Host name or domain name to query\.
+.RE
+\fB`\f[CR]\-t\fP`, `\f[CR]\-\-type <TYPE>\fP`\fP
+.RS
+Type of the DNS record being queried\.
+.RE
+\fB`\f[CR]\-n\fP`, `\f[CR]\-\-nameserver <ADDR>\fP`\fP
+.RS
+Address of the nameserver to send packets to\.
+.RE
+\fB`\f[CR]\-\-class <CLASS>\fP`\fP
+.RS
+Network class of the DNS record being queried (`\f[CR]IN\fP`, `\f[CR]CH\fP`, `\f[CR]HS\fP`)
+.RE
+.PP
+By default, dog will request A and AAAA records using the system default resolver\. A missing address family is left out when the other one answered; dog reports an error only when neither query returned a record\. At least one domain name must be passed \-\- dog will not automatically query the root nameservers\.
+.PP
+Query options passed in using a command\-line option, such as '`\f[CR]\-\-query lookup\.dog\fP`' or '`\f[CR]\-\-type MX\fP`', or as plain arguments, such as '`\f[CR]lookup\.dog\fP`' or '`\f[CR]MX\fP`'\. dog will make an intelligent guess as to what plain arguments mean (`\f[CR]MX\fP` is quite clearly a type), which makes it easier to compose ad\-hoc queries quickly\. If precision is desired, use the long\-form options\.
+.PP
+If more than one domain, type, nameserver, or class is specified, dog will perform one query for each combination, and display the combined results in a table\. For example, passing three type arguments and two domain name arguments will send six requests\.
+.PP
+DNS traditionally uses port 53 for both TCP and UDP\. To use a resolver with a different port, include the port number after a colon (`\f[CR]:\fP`) in the nameserver address\.
+
+.SH "SENDING OPTIONS"
+\fB`\f[CR]\-\-edns <SETTING>\fP`\fP
+.RS
+Whether to OPT in to EDNS (disable, hide, show)\.
+.RE
+\fB`\f[CR]\-\-txid <NUMBER>\fP`\fP
+.RS
+Set the transaction ID to a specific value\.
+.RE
+\fB`\f[CR]\-Z <TWEAKS>\fP`\fP
+.RS
+Set uncommon protocol tweaks: `\f[CR]aa\fP` (`\f[CR]authoritative\fP`) sets the AA header bit; `\f[CR]ad\fP` (`\f[CR]authentic\fP`) sets the AD header bit; `\f[CR]cd\fP` (`\f[CR]checking\-disabled\fP`) sets the CD header bit; `\f[CR]do\fP` (`\f[CR]dnssec\-ok\fP`) sets the DNSSEC OK bit in the EDNS OPT record; `\f[CR]bufsize=<NUMBER>\fP` sets the EDNS UDP payload size\.
+.RE
+
+.SH "PROTOCOL OPTIONS"
+\fB`\f[CR]\-U\fP`, `\f[CR]\-\-udp\fP`\fP
+.RS
+Use the DNS protocol over UDP\.
+.RE
+\fB`\f[CR]\-T\fP`, `\f[CR]\-\-tcp\fP`\fP
+.RS
+Use the DNS protocol over TCP\.
+.RE
+\fB`\f[CR]\-S\fP`, `\f[CR]\-\-tls\fP`\fP
+.RS
+Use the DNS\-over\-TLS protocol\.
+.RE
+\fB`\f[CR]\-H\fP`, `\f[CR]\-\-https\fP`\fP
+.RS
+Use the DNS\-over\-HTTPS protocol\.
+.RE
+.PP
+By default, dog will use the UDP protocol, automatically re\-sending the request using TCP if the response indicates that the message is too large for UDP\. Passing `\f[CR]\-\-udp\fP` will only use UDP and will fail in this case; passing `\f[CR]\-\-tcp\fP` will use TCP by default\.
+.PP
+The DNS\-over\-TLS (DoT) and DNS\-over\-HTTPS (DoH) protocols are available with the `\f[CR]\-\-tls\fP` and `\f[CR]\-\-https\fP` options\. Bear in mind that the system default resolver is unlikely to respond to requests using these protocols\.
+.PP
+Note that if a hostname or domain name is given as a nameserver, rather than an IP address, the resolution of that host is performed by the operating system, \fInot\fP by dog\.
+.PP
+The HTTPS transport takes the nameserver the same way as the others, as an address or a host name, not a URL: dog sends its queries to `\f[CR]https://<nameserver>/dns\-query\fP`, the path public DoH resolvers use\. A host name's addresses do not always serve every protocol: `\f[CR]cloudflare\-dns\.com\fP` answers DoH but not plain DNS or DoT\.
+
+.SH "OUTPUT OPTIONS"
+\fB`\f[CR]\-1\fP`, `\f[CR]\-\-short\fP`\fP
+.RS
+Short mode: display only the data of each answer, one per line\. The exit status is 2 if the server gave no result\.
+.RE
+\fB`\f[CR]\-J\fP`, `\f[CR]\-\-json\fP`\fP
+.RS
+Display the output as JSON\.
+.RE
+\fB`\f[CR]\-\-color\fP`, `\f[CR]\-\-colour <WHEN>\fP`\fP
+.RS
+When to colourise the output\. This can be '`\f[CR]always\fP`' or '`\f[CR]automatic\fP`', or '`\f[CR]never\fP`'\.
+.RE
+\fB`\f[CR]\-\-seconds\fP`\fP
+.RS
+Do not format durations as hours and minutes; instead, display them as seconds\.
+.RE
+
+.SH "META OPTIONS"
+\fB`\f[CR]\-V\fP`, `\f[CR]\-\-version\fP`\fP
+.RS
+Displays the version of dog being invoked\.
+.RE
+\fB`\f[CR]\-?\fP`, `\f[CR]\-\-help\fP`\fP
+.RS
+Displays an overview of the command\-line options\.
+.RE
+\fB`\f[CR]\-l\fP`, `\f[CR]\-\-list\fP`\fP
+.RS
+List known DNS record types\.
+.RE
+\fB`\f[CR]\-v\fP`, `\f[CR]\-\-verbose\fP`\fP
+.RS
+Print verbose information\.
+.RE
+\fB`\f[CR]\-\-completions <SHELL>\fP`\fP
+.RS
+Generate shell completions\.
+.RE
+
+.SH "SHORTCUTS"
+.PP
+Instead of using the `\f[CR]\-q\fP`, `\f[CR]\-t\fP`, and `\f[CR]\-n\fP` flags, you can provide the arguments directly:
+\fB`\f[CR]dog lookup\.dog\fP`\fP
+.RS
+Query a domain for its A and AAAA records
+.RE
+\fB`\f[CR]dog lookup\.dog MX\fP`\fP
+.RS
+Query a domain for a specific type
+.RE
+\fB`\f[CR]dog lookup\.dog @8\.8\.8\.8\fP`\fP
+.RS
+Query a domain using a specific nameserver
+.RE
+\fB`\f[CR]dog 1\.1\.1\.1\fP`\fP
+.RS
+Perform a reverse lookup for an IP address
+.RE
+
+.SH "RECORD TYPES"
+.PP
+dog supports the following record types: `\f[CR]A\fP`, `\f[CR]AAAA\fP`, `\f[CR]ANAME\fP`, `\f[CR]ANY\fP`, `\f[CR]AXFR\fP`, `\f[CR]CAA\fP`, `\f[CR]CDNSKEY\fP`, `\f[CR]CDS\fP`, `\f[CR]CNAME\fP`, `\f[CR]CSYNC\fP`, `\f[CR]DNSKEY\fP`, `\f[CR]DS\fP`, `\f[CR]HINFO\fP`, `\f[CR]HTTPS\fP`, `\f[CR]IXFR\fP`, `\f[CR]KEY\fP`, `\f[CR]MX\fP`, `\f[CR]NAPTR\fP`, `\f[CR]NS\fP`, `\f[CR]NSEC\fP`, `\f[CR]NSEC3\fP`, `\f[CR]NSEC3PARAM\fP`, `\f[CR]NULL\fP`, `\f[CR]OPENPGPKEY\fP`, `\f[CR]OPT\fP`, `\f[CR]PTR\fP`, `\f[CR]RRSIG\fP`, `\f[CR]SIG\fP`, `\f[CR]SOA\fP`, `\f[CR]SRV\fP`, `\f[CR]SSHFP\fP`, `\f[CR]SVCB\fP`, `\f[CR]TLSA\fP`, `\f[CR]TSIG\fP`, `\f[CR]TXT\fP`\.
+
+.SH "ENVIRONMENT VARIABLES"
+.PP
+dog responds to the following environment variables:
+
+.SS "`\f[CR]DOG_DEBUG\fP`"
+.PP
+Set this to any non\-empty value to have dog emit debugging information to standard error\. For more in\-depth output, set this to the exact string '`\f[CR]trace\fP`'\.
+
+.SH "EXIT STATUSES"
+\fB0\fP
+.RS
+If everything goes OK\.
+.RE
+\fB1\fP
+.RS
+If there was a network, I/O, or TLS error during operation\.
+.RE
+\fB2\fP
+.RS
+If there is no result from the server when running in short mode\. This can be any received server error, not just NXDOMAIN\.
+.RE
+\fB3\fP
+.RS
+If there was a problem with the command\-line arguments\.
+.RE
+.PP
+A closed output pipe, as in `\f[CR]dog example\.com | head \-n 1\fP`, is not an error: dog stops quietly with status 0\.
+
+.SH "AUTHOR"
+.PP
+dog was originally created by Benjamin 'ogham' Sago\. This version is a fork maintained by l1a\.
+.PP
+\fBSource code:\fP `\f[CR]https://github\.com/l1a/dog\fP` 
+.nf
+.fi
+\fBUpstream:\fP `\f[CR]https://github\.com/ogham/dog\fP`

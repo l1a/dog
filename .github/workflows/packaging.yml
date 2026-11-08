@@ -9,14 +9,29 @@ on:
     paths:
       - 'packaging/**'
       - '.copr/**'
+      - 'scripts/*_check.py'
       - 'scripts/render_packaging.py'
       - 'scripts/publish_packaging.py'
       - 'man/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'Justfile'
       - '.github/workflows/packaging.yml'
+      - '.github/workflows/copr.yml'
   pull_request:
     branches: [ master ]
+    paths:
+      - 'packaging/**'
+      - '.copr/**'
+      - 'scripts/*_check.py'
+      - 'scripts/render_packaging.py'
+      - 'scripts/publish_packaging.py'
+      - 'man/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Justfile'
+      - '.github/workflows/packaging.yml'
+      - '.github/workflows/copr.yml'
   workflow_dispatch:
 
 permissions:
@@ -27,46 +42,20 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
-  # Decides whether this PR has anything for the jobs below to check. Not `on.pull_request.paths`,
-  # which cannot tell the version bump every PR makes from a real change to Cargo.toml and
-  # Cargo.lock: see scripts/path_filter.py. The patterns it uses are the `push` paths above.
-  changes:
-    name: Detect relevant changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      run: ${{ steps.filter.outputs.run }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - id: filter
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: python3 scripts/path_filter.py .github/workflows/packaging.yml
-
   render:
     name: Renderer self-test
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      # Proves the renderer's guards can FAIL (a no-op substitution, a surviving sentinel, a bad
-      # version), and that every template still carries its sentinels and renders cleanly.
-      - run: python3 scripts/render_packaging.py --self-test
+      - run: |
+          python3 scripts/render_packaging.py --self-test
+          python3 scripts/copr_check.py --self-test
+          python3 scripts/copr_check.py
 
   copr:
     name: COPR build (Fedora)
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     container: fedora:latest
     timeout-minutes: 45
@@ -74,13 +63,11 @@ jobs:
       - name: Install dependencies
         run: dnf -y install make git rpm-build python3
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      # git refuses a repository owned by another user, which is what a container checkout is.
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      # The exact command COPR runs for a `make_srpm` package.
       - name: Build the SRPM as COPR does
         run: make -f .copr/Makefile srpm outdir=/tmp/srpm
 
@@ -96,8 +83,6 @@ jobs:
             *) echo "::error::SRPM name does not carry Cargo.toml's version ($version)"; exit 1 ;;
           esac
 
-      # A real rebuild, not just an SRPM: it runs %build, %install and %check, so a spec that
-      # parses but cannot build, or whose %files is wrong, fails here and not on the first tag.
       - name: Install build dependencies
         run: dnf -y builddep /tmp/srpm/*.src.rpm
 
@@ -117,16 +102,12 @@ jobs:
                    /usr/share/fish/vendor_completions.d/dog.fish; do
             rpm -qlp "$rpm" | grep -qx "$f" || { echo "::error::the RPM is missing $f"; exit 1; }
           done
-          # Fedora 45+ (RPM 6) enforces signature verification by default (%_pkgverify_level all),
-          # and a local `rpmbuild --rebuild` produces an unsigned package (COPR signs after build).
           rpm -ivh --nodeps --nosignature "$rpm"
           version=$(python3 scripts/render_packaging.py --print-version)
           dog --version | tee /dev/stderr | grep -q "v$version"
 
   aur:
     name: AUR (Arch)
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     timeout-minutes: 15
@@ -134,11 +115,8 @@ jobs:
       - name: Install dependencies
         run: pacman -Syu --noconfirm git python
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      # .SRCINFO is what the AUR actually reads, and it restates the PKGBUILD's version and
-      # checksum. Hand-maintaining that agreement is the classic AUR footgun, so prove the
-      # rendered pair agrees with what makepkg itself generates from the PKGBUILD.
       - name: Render PKGBUILD and .SRCINFO
         run: |
           set -euo pipefail
@@ -147,7 +125,6 @@ jobs:
           python3 scripts/render_packaging.py --target aur-pkgbuild --version 0.0.1 --sha256 "$sha" --out /tmp/aur/PKGBUILD
           python3 scripts/render_packaging.py --target aur-srcinfo  --version 0.0.1 --sha256 "$sha" --out /tmp/aur/SRCINFO.rendered
 
-      # makepkg refuses to run as root, which is what a container job is.
       - name: .SRCINFO matches what makepkg generates
         run: |
           set -euo pipefail
@@ -159,18 +136,13 @@ jobs:
 
   homebrew:
     name: Homebrew formula
-    needs: changes
-    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: Homebrew/actions/setup-homebrew@main
+      - uses: Homebrew/actions/setup-homebrew@63a2d4d8d4193eab3e62b1b782ff3ab8408f5b29 # main
 
-      # Homebrew only installs a formula from a tap, so make a throwaway one. --HEAD builds from
-      # the master branch and ignores the url and checksum, which is what lets a PR test the
-      # formula before any tag exists. The rendered values are placeholders and are never used.
       - name: Render the formula into a local tap
         run: |
           set -euo pipefail
@@ -179,18 +151,32 @@ jobs:
           python3 scripts/render_packaging.py --target brew --version 0.0.1 --sha256 "$sha" \
             --out "$(brew --repository l1a/test)/Formula/dog.rb"
 
-      # Homebrew 7.0.11 stopped implicitly trusting a fully-qualified formula for brew audit
-      # (only install/reinstall/upgrade still do). Trust just this throwaway formula.
       - name: Trust the throwaway formula
         run: brew trust --formula l1a/test/dog
 
       - name: Audit
         run: brew audit --strict --formula l1a/test/dog
 
-      # This builds the code on this branch's master with Homebrew's Rust, then installs it.
+      - name: Point --HEAD at this checkout for the build test
+        run: |
+          set -euo pipefail
+          git branch -f master HEAD
+          formula="$(brew --repository l1a/test)/Formula/dog.rb"
+          python3 -c '
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          ws = sys.argv[2]
+          t = p.read_text()
+          new = t.replace(
+              "head \"https://github.com/l1a/dog.git\", branch: \"master\"",
+              f"head \"file://{ws}\", using: :git, branch: \"master\"",
+          )
+          assert new != t, "head line not found in rendered formula"
+          p.write_text(new)
+          ' "$formula" "$GITHUB_WORKSPACE"
+
       - name: Install from source
         run: brew install --HEAD --verbose l1a/test/dog
 
-      # Runs the formula's own `test do` block.
       - name: Test
         run: brew test l1a/test/dog

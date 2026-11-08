@@ -1,11 +1,106 @@
+# ============================================================================
+# PROJECT CONFIGURATION
+# ============================================================================
+
+BINS      := "dog"
+MAN_PAGES := "man/dog.1"
+base      := "origin/master"
+
+export DOG_DEBUG := ""
+
+# Default: build and run unit tests
+default: build test
+
 all: build test
 all-release: build-release test-release
 all-quick: build-quick test-quick
 
-export DOG_DEBUG := ""
+# >>> COMMON (template v6)
+# Canonical reference & rationale: templates/justfile-common.just
+# Do not edit between the >>> and <<< markers alone — change the template and
+# the helpers in scripts/, bump TEMPLATE_VERSION, and propagate to sibling repos.
 
-version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
+# The interpreter is resolved ONCE per line, and a missing one is a hard error. The
+# `python3 … 2>/dev/null || python …` idiom is deliberately NOT used: it retries on ANY
+# failure, so a real error inside the script gets re-run and reported as if the
+# interpreter were the problem.
+PY := `command -v python3 || command -v python || echo PYTHON-NOT-FOUND`
 
+# Install from this checkout: binary, man page(s) and completions.
+#
+# The dependencies are the point. `cargo install` alone replaces the binary and leaves the
+# man page and completions at whatever version last ran their recipe — measured on a host
+# whose page was ELEVEN releases stale with nothing reporting it.
+install: install-man install-completions
+    cargo install --path .
+
+# Install a RELEASED tag: binary, man page(s) and completions, all three FROM THAT TAG.
+#
+# **It deliberately does NOT depend on `install-man`/`install-completions`**, because those
+# work from the checkout. Reusing them would pair a tag's binary with the worktree's man
+# page and completions — on a checkout one release ahead, a v0.2.22 binary with a v0.2.23
+# page. Mismatched artefacts that each look fine is the failure class this standard exists
+# to remove, so the three sources are made to agree: binary from the tag, completions from
+# THE INSTALLED BINARY (`--from-path`), man page from the tag (`--from-tag`).
+#
+# Never `--path`: on a Syncthing-shared checkout that builds from a directory other
+# machines write into. Takes a bare version and normalises a leading `v`.
+install-tag VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    V="{{VERSION}}"; V="${V#v}"
+    [ -n "$V" ] || { echo "error: install-tag needs a version, e.g. just install-tag 0.8.3" >&2; exit 1; }
+    git rev-parse -q --verify "refs/tags/v${V}" >/dev/null || {
+        echo "error: tag v${V} is not in this clone. Run: git fetch --tags" >&2; exit 1; }
+    REPO=$(git config --get remote.origin.url)
+    echo "Installing from tag v${V} of ${REPO}"
+    cargo install --git "$REPO" --tag "v${V}" --locked --force
+    # POST-CONDITION: cargo prints a replacement line, but only a version query proves which
+    # binary is on PATH now.
+    for b in {{BINS}}; do
+        command -v "$b" >/dev/null 2>&1 || { echo "error: $b is not on PATH after install" >&2; exit 1; }
+        echo "  $b -> $("$b" --version)"
+    done
+    "{{PY}}" scripts/install_man.py {{MAN_PAGES}} --from-tag "v${V}"
+    "{{PY}}" scripts/install_completions.py {{BINS}} --from-path
+
+# Install the man page(s) to the XDG man directory.
+#
+# Installs the COMMITTED page(s) and deliberately does NOT depend on `man` (v6). Every repo
+# using this block commits its pages and its gate refuses a stale one, so rebuilding here
+# only made `just install` require mandown -- a documentation build tool -- to install a
+# finished page, and rewrote a tracked file in the user's checkout. Edited the page source?
+# Run `just man` first; the gate would refuse the stale page at PR time anyway.
+install-man:
+    @"{{PY}}" scripts/install_man.py {{MAN_PAGES}}
+
+# Generate and install shell completions for every binary.
+#
+# Python rather than a just recipe, which is retch's finding and the more portable
+# mechanism: no `sh`, no `cygpath`, no coreutils, nothing from Git's `usr\bin` on Windows.
+# A `bash` shebang recipe cannot run on Windows without `cygpath` at all, and even a plain
+# `sh` recipe still needs an `sh` on PATH.
+install-completions: build
+    @"{{PY}}" scripts/install_completions.py {{BINS}}
+
+# Prove the vendored helpers still behave the way the standard requires.
+#
+# **This runs the helpers' own self-tests rather than diffing text**, and that is the whole
+# point: three separate repositories cannot diff each other's files, but each can prove its
+# copy still behaves correctly — which is the property that was actually violated when two
+# repos quietly shipped the pre-fix nushell path for months. A text diff would also have
+# passed happily on a repo that had never adopted the standard at all.
+standard-check:
+    @"{{PY}}" scripts/install_completions.py --self-test
+    @"{{PY}}" scripts/install_man.py --self-test
+    @"{{PY}}" scripts/gate_conformance.py --self-test
+    @"{{PY}}" scripts/gate_conformance.py "{{justfile()}}"
+
+# <<< COMMON
+
+# ============================================================================
+# PROJECT-SPECIFIC
+# ============================================================================
 
 #----------#
 # building #
@@ -33,11 +128,7 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 @build-quick:
     cargo build --no-default-features
 
-# check that the dog binary can compile
-@check:
-    cargo check
-
-# remove build output (the binary, the tests and the rendered man page)
+# remove build output
 @clean:
     cargo clean
 
@@ -47,70 +138,99 @@ version := `grep '^version =' Cargo.toml | head -1 | cut -d '"' -f 2`
 #---------------#
 
 # run unit tests
-@test: fmt clippy
+@test: fmt-check clippy
     cargo test --workspace -- --quiet
 
 # run unit tests (in release mode)
-@test-release: fmt clippy
+@test-release: fmt-check clippy
     cargo test --workspace --release --verbose
 
 # run unit tests (without some features)
-@test-quick: fmt clippy
+@test-quick: fmt-check clippy
     cargo test --workspace --no-default-features -- --quiet
-
-
-
-
-
 
 
 #-----------------------#
 # code quality and misc #
 #-----------------------#
 
-# check code formatting
-@fmt:
-    cargo fmt --check
+# format code with rustfmt
+fmt:
+    cargo fmt
 
-# check the packaging templates (the renderer's guards, and that every template still renders)
-@packaging-check:
-    python3 scripts/render_packaging.py --self-test
+# check code formatting without modifying files
+fmt-check:
+    cargo fmt -- --check
+
+# lint the code with clippy
+clippy:
+    cargo clippy --all-targets -- -D warnings
+
+# alias for clippy
+lint: clippy
+
+# run all offline repository quality gates (fmt-check, clippy, standard-check, man-check, packaging-check, scripts-check, text-check, wip-check)
+check: fmt-check clippy standard-check man-check packaging-check scripts-check text-check wip-check
+    @echo "All checks passed."
+
+# check the packaging templates, COPR invariants, and metadata agreement
+packaging-check: render-check copr-check metadata-check
+
+# run the packaging renderer's self-test
+render-check:
+    @"{{PY}}" scripts/render_packaging.py --self-test
+
+# verify packaging/copr/dog.spec, .copr/Makefile, and .github/workflows/copr.yml invariants
+copr-check:
+    @"{{PY}}" scripts/copr_check.py --self-test
+    @"{{PY}}" scripts/copr_check.py
 
 # run the self-tests of every project script, and check the project description agrees everywhere
-@scripts-check:
-    python3 scripts/render_packaging.py --self-test
-    python3 scripts/version_gate.py --self-test
-    python3 scripts/ci_changes.py --self-test
-    python3 scripts/ci_gate.py --self-test
-    python3 scripts/path_filter.py --self-test
-    python3 scripts/branch_gate.py --self-test
-    python3 scripts/metadata_check.py --self-test
-    python3 scripts/github_metadata.py --self-test
-    python3 scripts/metadata_check.py
+scripts-check:
+    @"{{PY}}" scripts/render_packaging.py --self-test
+    @"{{PY}}" scripts/copr_check.py --self-test
+    @"{{PY}}" scripts/version_gate.py --self-test
+    @"{{PY}}" scripts/ci_gate.py --self-test
+    @"{{PY}}" scripts/branch_gate.py --self-test
+    @"{{PY}}" scripts/metadata_check.py --self-test
+    @"{{PY}}" scripts/github_metadata.py --self-test
+    @"{{PY}}" scripts/metadata_check.py
 
 # check that every copy of the project description agrees with packaging/metadata.toml
-@metadata-check:
-    python3 scripts/metadata_check.py
+metadata-check:
+    @"{{PY}}" scripts/metadata_check.py
+
+# refuse control characters and CRLF line endings in tracked text files
+text-check:
+    @"{{PY}}" scripts/text_check.py --self-test
+    @"{{PY}}" scripts/text_check.py
+
+# refuse CRLF in WIP.md and verify scripts/reset_wip.py
+wip-check:
+    @"{{PY}}" scripts/reset_wip.py --self-test
+    @"{{PY}}" scripts/reset_wip.py --check-endings
 
 # set the GitHub About box and topics from packaging/metadata.toml (public: shows the change and asks first)
 github-metadata:
-    python3 scripts/github_metadata.py --apply
+    "{{PY}}" scripts/github_metadata.py --apply
 
 # publish a released version to the AUR (public and immediate: you must type the version to confirm)
-@publish-aur version:
-    python3 scripts/publish_packaging.py aur "{{version}}"
+aur-publish version:
+    @"{{PY}}" scripts/publish_packaging.py aur "{{version}}"
+
+# alias for aur-publish
+publish-aur version: (aur-publish version)
 
 # publish a released version to the Homebrew tap (public and immediate: you must type the version to confirm)
-@publish-brew version:
-    python3 scripts/publish_packaging.py brew "{{version}}"
+brew-publish version:
+    @"{{PY}}" scripts/publish_packaging.py brew "{{version}}"
+
+# alias for brew-publish
+publish-brew version: (brew-publish version)
 
 # run a real DNS query against 8.8.8.8 with a freshly built dog (needs the network); what CI's smoke test runs
 @smoke-dns:
     scripts/smoke_dns.sh
-
-# lint the code
-@clippy:
-    cargo clippy --all-targets -- -D warnings
 
 # generate a code coverage report using tarpaulin via docker
 @coverage-docker:
@@ -137,16 +257,13 @@ github-metadata:
 # the pull-request flow #
 #-----------------------#
 
-# The branch every PR targets, as a git ref.
-base := "origin/master"
-
 # check the version was bumped past master and the last tag (what the `Version bump` CI job runs)
-@version-check:
-    python3 scripts/version_gate.py --base {{base}}
+version-check:
+    @"{{PY}}" scripts/version_gate.py --base {{base}}
 
-# install the git hooks (a pre-push that runs fmt and clippy); run once per clone
-@install-hooks:
-    bash scripts/install_hooks.sh
+# install the git hooks (pre-push runs `just check`); run once per clone
+install-hooks:
+    @"{{PY}}" scripts/install_hooks.py
 
 # Run before opening a PR and before each later push. Never call `gh pr create` directly;
 # use `just open-pr`.
@@ -164,9 +281,8 @@ pr:
     # 1. A feature branch, never master.
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
     [ "$BRANCH" = "master" ] && fail "On master: create a feature branch first (feature/, fix/, chore/ or docs/<name>)"
-    # Named {feature,fix,chore,docs}/<name>, and a docs/ branch must change documentation only.
     git fetch -q origin master
-    python3 scripts/branch_gate.py --base {{base}} || fail "Branch name: see above (CONTRIBUTING.md, Workflow)"
+    "{{PY}}" scripts/branch_gate.py --base {{base}} || fail "Branch name: see above (CONTRIBUTING.md, Workflow)"
     pass "Branch: $BRANCH"
 
     # 2. Everything committed, so what this gate checks is what gets pushed.
@@ -178,28 +294,27 @@ pr:
 
     # 3. The version is bumped past master and the last tag, and Cargo.lock agrees.
     info "Checking the version bump..."
-    git fetch -q origin master
-    if ! VG_OUT=$(python3 scripts/version_gate.py --base {{base}} 2>&1); then
+    if ! VG_OUT=$("{{PY}}" scripts/version_gate.py --base {{base}} 2>&1); then
         printf '%s\n' "$VG_OUT"
         fail "Version not bumped past master and the last tag (Z for fixes/tests/docs/CI/deps, Y for new features; see CONTRIBUTING.md, Version numbers)"
     fi
     printf '%s\n' "$VG_OUT" | grep -E '^(Cargo|version)' | sed 's/^/    /'
     pass "Version bumped"
 
-    # 4. The scripts' self-tests, which include the packaging templates still rendering and
-    #    still recording nothing.
-    just scripts-check > /dev/null
-    pass "Script self-tests and packaging templates"
+    # 4. Offline quality gate (fmt-check, clippy, standard-check, man-check, packaging-check, scripts-check, text-check, wip-check).
+    info "just check..."
+    just check > /dev/null
+    pass "Offline quality gate (just check)"
 
     # 5. The lockfile builds as committed (CI and every packaging channel use --locked).
     info "cargo build --locked..."
     cargo build --locked -q
     pass "Cargo.lock is current and committed"
 
-    # 6. fmt, clippy --all-targets -D warnings, and the tests: exactly what CI runs.
-    info "just (build, fmt, clippy, tests)..."
-    just > /dev/null
-    pass "fmt, clippy and tests passed"
+    # 6. Unit and integration tests.
+    info "just test..."
+    just test > /dev/null
+    pass "fmt-check, clippy and tests passed"
 
     # 7. Security audit. Advisory only: advisories can appear against unchanged dependencies,
     #    and should not hard-block otherwise ready work. CI runs the same audit separately.
@@ -214,15 +329,11 @@ pr:
     echo -e "${BOLD}Manual checklist: confirm each before opening the PR:${NC}"
     echo "  [ ] The bump is the right part of X.Y.Z: Z for fixes/tests/docs/CI/dependency updates, Y for a new user-visible feature,"
     echo "      and a breaking change is Y before 1.0.0 and X after (CONTRIBUTING.md, Version numbers)"
-    echo "  [ ] README.md and man/dog.1.md reviewed (new flags, behaviour, install channels)"
+    echo "  [ ] README.md and man/dog.1.md reviewed (new flags, behaviour, install channels), and man/dog.1 regenerated via just man"
     echo "  [ ] AGENTS.md / CONTRIBUTING.md updated if the workflow, CI or packaging changed (in THIS PR, not later)"
     echo "  [ ] Packaging templates changed? then they were built for real (see AGENTS.md, Packaging)"
     echo "  [ ] PR description says what and why, has a test plan, and ends with Assisted-By: <model name>"
     echo ""
-    # A bare `read` cannot be answered by a script, CI job or agent, and the failure then reads as
-    # the gate refusing the change. PR_CONFIRM is the explicit answer for a non-interactive caller.
-    # It is not a bypass: setting it is the same act as typing y, recorded where a script can
-    # supply it, and it must be answered AFTER checking each item above.
     if [ -n "${PR_CONFIRM:-}" ]; then
         CONFIRM="$PR_CONFIRM"
         echo "All manual items confirmed? [y/N] $CONFIRM   (answered by PR_CONFIRM)"
@@ -236,7 +347,6 @@ pr:
         [ -n "$CONFIRM" ] || fail "No terminal to confirm the checklist on. Re-run with PR_CONFIRM=y once each item above is actually checked."
     fi
     [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ] || fail "Complete the checklist first."
-    # `just open-pr` sets OPEN_PR and opens the PR itself, so telling it to run open-pr would be noise.
     if [ -n "${OPEN_PR:-}" ]; then
         echo -e "\n${GREEN}Gate passed.${NC}\n"
     else
@@ -246,19 +356,19 @@ pr:
 # gh has no hook of its own to gate `gh pr create`, so this is the one call site that can.
 # --repo is explicit because this repository is a fork of ogham/dog, and a bare `gh pr create`
 # can target upstream.
-# run the pre-PR gate, then `gh pr create` against l1a/dog master
+# run the pre-PR gate, push if the branch has no upstream, then `gh pr create` against l1a/dog master
 [positional-arguments]
 open-pr *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     OPEN_PR=1 just pr
-    # "$@", not {{ARGS}}: just joins a variadic argument with spaces and no quoting, so a title with
-    # spaces would reach gh as several words. positional-arguments passes each argument through intact.
+    if ! git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+        BRANCH=$(git rev-parse --abbrev-ref HEAD)
+        echo "Pushing $BRANCH to origin..."
+        git push -u origin "$BRANCH"
+    fi
     gh pr create --repo l1a/dog --base master "$@"
 
-# GitHub deletes a PR's remote branch when it merges (the repository setting is on), but never your
-# local one, so merged branches pile up here, each marked [gone]. `just merge-pr` removes the branch it
-# merges; this clears the rest. A branch is kept, with a message, if it is not merged into HEAD.
 # delete local branches whose remote branch is gone, if they are merged
 prune-branches:
     #!/usr/bin/env bash
@@ -273,38 +383,31 @@ prune-branches:
         if git branch -d "$b" > /dev/null 2>&1; then echo "deleted  $b"; else echo "KEPT     $b (not merged: git branch -D $b to force)"; fi
     done
 
-# Run this ONLY when merging has been authorised. `gh pr merge` merges a red PR happily, and
-# "the checks have settled" is not "the checks passed". No checks at all is not green either,
-# and an empty list must not read as success.
 # merge the current branch's PR, but only if every check is green
 merge-pr:
     #!/usr/bin/env bash
     set -euo pipefail
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
     [ "$BRANCH" = "master" ] && { echo "Error: already on master."; exit 1; }
-    # gh refuses --repo without a PR argument ("argument required when using the --repo flag"), so
-    # resolve the PR once and pass it everywhere. Without it every call below failed, and the head
-    # check reported that as "the PR head is not your local HEAD" (hit merging #40).
     PR=$(gh pr view "$BRANCH" --repo l1a/dog --json number --jq .number) \
         || { echo "Error: no pull request found for branch $BRANCH in l1a/dog."; exit 1; }
     [ "$(gh pr view "$PR" --repo l1a/dog --json headRefOid --jq .headRefOid)" = "$(git rev-parse HEAD)" ] \
         || { echo "Error: the PR head is not your local HEAD. Push first, then wait for CI on that commit."; exit 1; }
 
-    # Count in jq rather than looping over a list of states in the shell: a check that is still
-    # running reports an EMPTY state, and word-splitting drops an empty word, so a loop over the
-    # states would never see it and the recipe would merge with a check pending. A check that
-    # reports neither a conclusion nor a state counts as not green.
-    CHECKS='.statusCheckRollup[]? | select((.conclusion // .state // "") != "SKIPPED")'
-    TOTAL=$(gh pr view "$PR" --repo l1a/dog --json statusCheckRollup --jq "[$CHECKS] | length")
-    if [ "$TOTAL" = "0" ]; then
-        echo "Error: no checks have reported for this commit. That is not the same as passing."
+    STATES=$(gh pr view "$PR" --repo l1a/dog --json statusCheckRollup \
+        --jq '[.statusCheckRollup[] | select((.conclusion // .state // "") != "SKIPPED") | (.conclusion // .state // "")]')
+    if [ "$STATES" = "[]" ]; then
+        echo "Error: no checks have reported for this commit. That is not the same as passing." >&2
         exit 1
     fi
-    NOT_GREEN=$(gh pr view "$PR" --repo l1a/dog --json statusCheckRollup --jq "[$CHECKS | select((.conclusion // .state // \"\") != \"SUCCESS\")] | length")
-    if [ "$NOT_GREEN" != "0" ]; then
-        echo "Error: CI is not green on this branch ($NOT_GREEN of $TOTAL checks):"
-        gh pr view "$PR" --repo l1a/dog --json statusCheckRollup \
-            --jq ".statusCheckRollup[]? | select((.conclusion // .state // \"\") != \"SKIPPED\" and (.conclusion // .state // \"\") != \"SUCCESS\") | \"  \(if (.conclusion // .state // \"\") == \"\" then (.status // \"PENDING\") else (.conclusion // .state) end)  \(.name // .context)\""
+    if echo "$STATES" | grep -qE 'FAILURE|TIMED_OUT|CANCELLED|ACTION_REQUIRED'; then
+        echo "Error: CI has failing checks on this branch:" >&2
+        gh pr checks "$PR" --repo l1a/dog >&2 || true
+        exit 1
+    fi
+    if echo "$STATES" | grep -qE 'PENDING|QUEUED|IN_PROGRESS|WAITING|REQUESTED|""'; then
+        echo "Error: CI checks are still running on this branch. Wait for them to finish." >&2
+        gh pr checks "$PR" --repo l1a/dog >&2 || true
         exit 1
     fi
     [ "$(gh pr view "$PR" --repo l1a/dog --json mergeable --jq .mergeable)" = "MERGEABLE" ] \
@@ -314,6 +417,8 @@ merge-pr:
     git checkout master
     git pull -q origin master
     git branch -D "$BRANCH" 2>/dev/null || true
+    VER=$("{{PY}}" scripts/render_packaging.py --print-version)
+    "{{PY}}" scripts/reset_wip.py --branch master --pr "$PR" --version "$VER"
 
 
 #---------------#
@@ -324,14 +429,18 @@ merge-pr:
 @doc:
     cargo doc --no-deps --workspace
 
-# build the man pages
-@man:
-    mkdir -p "${CARGO_TARGET_DIR:-target}/man"
-    sed "s/{{ '{{' }}VERSION{{ '}}' }}/{{version}}/g" man/dog.1.md | pandoc --standalone -f markdown -t man > "${CARGO_TARGET_DIR:-target}/man/dog.1"
+# build man/dog.1 from man/dog.1.md using mandown and stamp the version from Cargo.toml
+man:
+    @"{{PY}}" scripts/man_pages.py --build
 
-# build and preview the man page
-@man-preview: man
-    man "${CARGO_TARGET_DIR:-target}/man/dog.1"
-@man-local: man
-    mkdir -p ~/.local/share/man/man1
-    cp "${CARGO_TARGET_DIR:-target}/man/dog.1" ~/.local/share/man/man1/
+# check that man/dog.1 is current in both worktree and HEAD
+man-check:
+    @"{{PY}}" scripts/man_pages.py --self-test
+    @"{{PY}}" scripts/man_pages.py --check
+
+# preview the committed man page
+@man-preview:
+    man man/dog.1
+
+# install the man page to ~/.local/share/man/man1
+man-local: install-man

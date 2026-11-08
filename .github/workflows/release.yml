@@ -17,21 +17,18 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Fail in seconds, before spending an hour of runner time, if the tag and the manifest disagree
-  # or Cargo.lock was not updated with the version bump (this has happened: see 2f7d5d4).
   verify:
     name: Verify tag and lockfile
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - name: Tag matches Cargo.toml
         if: github.ref_type == 'tag'
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
-          # A pre-release tag such as vX.Y.Z-rc.1 is allowed to carry a suffix the manifest lacks.
           tag="${GITHUB_REF_NAME#v}"
           base="${tag%%-*}"
           if [ "$base" != "$version" ]; then
@@ -39,48 +36,23 @@ jobs:
             exit 1
           fi
 
-      # `--locked` makes cargo fail instead of silently rewriting a stale lockfile.
-      - name: Cargo.lock is up to date
-        run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: Cargo.lock and man page are up to date
+        run: |
+          cargo metadata --locked --format-version 1 > /dev/null
+          python3 scripts/man_pages.py --check
 
-  # The whole CI suite, as a reusable workflow. A release can never ship code that master's CI
-  # would have rejected.
   ci:
     name: CI
     needs: verify
     uses: ./.github/workflows/ci.yml
-    # ci.yml's `CI OK` job reads this run's job list through the API, and a called workflow
-    # cannot be granted more than its caller gives it.
     permissions:
       contents: read
       actions: read
       pull-requests: read
 
-  man:
-    name: Build man page
-    needs: verify
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: extractions/setup-just@v4
-
-      - name: Install pandoc
-        run: sudo apt-get update && sudo apt-get install -y pandoc
-
-      - name: Build the man page
-        run: |
-          just man
-          grep -q '^\.TH' target/man/dog.1
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: man
-          path: target/man/dog.1
-
   build:
     name: Build (${{ matrix.suffix }})
-    needs: [ ci, man ]
+    needs: ci
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -92,21 +64,15 @@ jobs:
           - { os: windows-latest,   suffix: windows-x86_64 }
           - { os: windows-11-arm,   suffix: windows-aarch64 }
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Build release binary
         run: cargo build --release --locked
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: man
-          path: man-out
-
-      # Completions come from the binary just built, so they cannot disagree with its CLI.
       - name: Package (Linux and macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -116,7 +82,7 @@ jobs:
           [ "${GITHUB_REF_TYPE}" = "tag" ] || name="dog-dev-${{ matrix.suffix }}"
           mkdir -p "dist/$name"/{bin,man,completions}
           cp target/release/dog "dist/$name/bin/"
-          cp man-out/dog.1 "dist/$name/man/"
+          cp man/dog.1 "dist/$name/man/"
           cp LICENSE README.md "dist/$name/"
           bin=target/release/dog
           "$bin" --completions bash       > "dist/$name/completions/dog.bash"
@@ -139,7 +105,7 @@ jobs:
           $d = "dist/$name"
           New-Item -ItemType Directory -Force -Path "$d/bin", "$d/man", "$d/completions" | Out-Null
           Copy-Item target/release/dog.exe "$d/bin/"
-          Copy-Item man-out/dog.1 "$d/man/"
+          Copy-Item man/dog.1 "$d/man/"
           Copy-Item LICENSE, README.md $d
           $bin = 'target/release/dog.exe'
           foreach ($pair in @(@('powershell', '_dog.ps1'), @('bash', 'dog.bash'), @('zsh', '_dog'),
@@ -151,7 +117,7 @@ jobs:
           Remove-Item -Recurse -Force $d
           Get-ChildItem dist
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-${{ matrix.suffix }}
           path: dist/*
@@ -164,9 +130,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      # `pattern` is load-bearing: only `release-*` artifacts become release assets. The `man`
-      # artifact is an input to the build jobs and must not be published on its own.
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: release-*
           path: dist
@@ -179,11 +143,10 @@ jobs:
           cat SHA256SUMS
 
       - name: Create release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           files: dist/*
           generate_release_notes: true
-          # A tag with a suffix, such as vX.Y.Z-rc.1, is a pre-release.
           prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

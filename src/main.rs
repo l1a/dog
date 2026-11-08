@@ -137,6 +137,8 @@ async fn main() {
 
             if shell.eq_ignore_ascii_case("nushell") || shell.eq_ignore_ascii_case("nu") {
                 generate(Nushell, &mut cmd, "dog", &mut buffer);
+            } else if shell.eq_ignore_ascii_case("power-shell") {
+                generate(Shell::PowerShell, &mut cmd, "dog", &mut buffer);
             } else if let Ok(s) = shell.parse::<Shell>() {
                 generate(s, &mut cmd, "dog", &mut buffer);
             } else {
