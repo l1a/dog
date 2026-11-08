@@ -59,35 +59,27 @@ and of `just pr`) tells you exactly which copy disagrees. The GitHub About box a
 ## Running the checks locally
 
 You need a stable Rust toolchain with `rustfmt` and `clippy`, plus [`just`](https://github.com/casey/just).
-The man page needs [`pandoc`](https://pandoc.org/).
+Regenerating the man page (`just man`) needs [`mandown`](https://crates.io/crates/mandown) (`cargo install mandown`).
 
 ```sh
-just          # build, then fmt check, clippy -D warnings, and tests
-just man      # build the man page into target/man
+just          # build, then fmt-check, clippy -D warnings, and tests
+just check    # all offline quality gates (fmt-check, clippy, standard-check, man-check, packaging-check, scripts-check, text-check, wip-check)
+just man      # regenerate man/dog.1 from man/dog.1.md
 just clean    # remove build output
 ```
 
-`just clippy` runs exactly what CI runs, so a clean local run means a clean CI run. A new Rust release can
+`just clippy` (`just lint`) runs exactly what CI runs, so a clean local run means a clean CI run. A new Rust release can
 add lints, so a PR that did not touch the affected code can still start failing on `master`.
 
 ## What CI runs
 
 | Job | What it checks |
 |---|---|
-| Format and Clippy | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` |
+| Format and Clippy | offline script/repo guards, `cargo fmt -- --check`, `cargo clippy --all-targets -- -D warnings` |
 | Test | build, tests, and a smoke test (including a real DNS query to 8.8.8.8, retried, so it needs the network) on Linux (x86_64, aarch64, Fedora), macOS and Windows (x86_64, aarch64) |
-| Man page | `just man` builds and renders |
+| Man page | `scripts/man_pages.py --check` and `man -l man/dog.1` |
 | Security Audit | `cargo audit`, on dependency changes and weekly |
 | Version bumped | advisory: the version is past `master`'s and the last tag, and `Cargo.lock` agrees |
-
-**A docs-only PR does not run the full suite.** A PR that changes only Markdown at the repository root, `LICENSE`, the screenshot, or
-the issue and PR templates skips format, clippy, the tests and the man page; a PR that changes only `man/` runs just the man page.
-Anything else runs everything, including every workflow file and Markdown in a subdirectory (which can be a build input). `CI OK`
-always reports, so a docs-only PR is never stuck waiting for a skipped check, and it fails if a job your change needs was skipped.
-Pushes to `master`, releases and any doubt run the full suite. The version check still runs on every PR, and the required version
-bump in `Cargo.toml` and `Cargo.lock` does not make a docs-only PR count as code, provided it changes nothing but dogdns's own version.
-The same holds for the Packaging, Metadata and Security Audit workflows: they run only when the PR changes something they check, and a
-bare version bump is not one.
 
 ## Packaging
 

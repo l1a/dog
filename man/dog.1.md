@@ -1,10 +1,3 @@
-% dog(1) {{VERSION}}
-
-<!-- This is the dog(1) man page, written in Markdown. -->
-<!-- To generate the roff version, run `just man`, -->
-<!-- and the man page will appear in the ‘target’ directory. -->
-
-
 NAME
 ====
 

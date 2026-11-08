@@ -1,0 +1,60 @@
+name: Claude Code Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to review"
+        required: true
+        type: number
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  claude-review:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@c0949c50a78c1ec8ce2647db36629b870e715d0c # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ inputs.pr || github.event.pull_request.number }}
+
+            Please review this pull request and provide feedback on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Performance considerations
+            - Security concerns
+            - Test coverage
+
+            Use `gh pr diff ${{ inputs.pr || github.event.pull_request.number }}` and `gh pr view ${{ inputs.pr || github.event.pull_request.number }}` to inspect the pull request, and `gh pr comment ${{ inputs.pr || github.event.pull_request.number }} --body ...` to post your review. Be constructive and helpful in your feedback.
+
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+
+      - name: Write review to step summary
+        if: always() && steps.claude-review.outputs.execution_file != ''
+        env:
+          EXEC_FILE: ${{ steps.claude-review.outputs.execution_file }}
+          PR_NUM: ${{ inputs.pr || github.event.pull_request.number }}
+        run: |
+          echo "## Claude Code Review — PR #${PR_NUM}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '
+            ([.[] | select(.type == "result") | .result // empty] | last) //
+            ([.[] | select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text] | join("\n\n"))
+          ' "$EXEC_FILE" >> "$GITHUB_STEP_SUMMARY"

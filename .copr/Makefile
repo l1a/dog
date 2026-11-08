@@ -54,7 +54,7 @@ srpm:
 	    grep -E "^dog-[^/]+/(target/|[.]git/|[.]claude/|[.]copr-build/)" $(BUILD)/listing.txt >&2; \
 	    exit 1; \
 	fi; \
-	for f in Cargo.toml Cargo.lock LICENSE README.md build.rs man/dog.1.md src/main.rs; do \
+	for f in Cargo.toml Cargo.lock LICENSE README.md build.rs man/dog.1 src/main.rs; do \
 	    grep -qx "dog-$$V/$$f" $(BUILD)/listing.txt \
 	        || { echo "error: the source archive is missing $$f" >&2; exit 1; }; \
 	done; \

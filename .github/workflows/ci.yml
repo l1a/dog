@@ -1,22 +1,7 @@
 name: CI
 
 # Runs on every PR to master and every push to master.
-#
-# A docs-only PR does not run the full suite, but this is NOT done with `paths:` filters. Branch
-# protection requires the single `CI OK` job, and a workflow filtered out by `paths:` never reports
-# a status, so a docs-only PR would wait on a required check forever. Instead this workflow always
-# runs, a `changes` job classifies the PR's files (scripts/ci_changes.py), and `lints`, `test` and
-# `man` are skipped with `if:` when they are not needed. `CI OK` still runs every time, recomputes
-# the classification itself, and fails if a job this change needs was skipped, so a
-# misclassification cannot hide a skipped check (scripts/ci_gate.py).
-#
-#   docs-only  Markdown at the repository root, LICENSE, the screenshot, issue and PR templates:
-#              nothing is built or tested.
-#   man        man/ changed: only `Man page` runs.
-#   code       anything else, including every workflow file: the full suite runs.
-#
-# Only pull requests take the fast path. A push to master, a release (workflow_call) and a manual
-# run always run everything, and so does any doubt (an API error, an empty or truncated file list).
+# Branch protection requires the single `CI OK` job (`scripts/ci_gate.py`).
 
 on:
   push:
@@ -39,53 +24,46 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 jobs:
-  changes:
-    name: Detect changed files
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      code: ${{ steps.classify.outputs.code }}
-      man: ${{ steps.classify.outputs.man }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - id: classify
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: python3 scripts/ci_changes.py
-
   lints:
     name: Format and Clippy
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      - name: Offline script and repository guards
+        run: |
+          python3 scripts/install_completions.py --self-test
+          python3 scripts/install_man.py --self-test
+          python3 scripts/gate_conformance.py --self-test
+          python3 scripts/gate_conformance.py Justfile
+          python3 scripts/render_packaging.py --self-test
+          python3 scripts/copr_check.py --self-test
+          python3 scripts/copr_check.py
+          python3 scripts/version_gate.py --self-test
+          python3 scripts/ci_gate.py --self-test
+          python3 scripts/branch_gate.py --self-test
+          python3 scripts/metadata_check.py --self-test
+          python3 scripts/github_metadata.py --self-test
+          python3 scripts/metadata_check.py
+          python3 scripts/text_check.py --self-test
+          python3 scripts/text_check.py
+          python3 scripts/reset_wip.py --self-test
 
       - name: Check formatting
-        run: cargo fmt --check
+        run: cargo fmt -- --check
 
-      # Same invocation as `just clippy`, so a green local `just` means a green CI.
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
   test:
     name: Test (${{ matrix.name }})
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     timeout-minutes: 30
@@ -93,27 +71,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-x86_64,   os: ubuntu-latest }
-          - { name: linux-aarch64,  os: ubuntu-24.04-arm }
-          - { name: fedora-x86_64,  os: ubuntu-latest, container: "fedora:latest" }
-          - { name: macos-aarch64,  os: macos-latest }
-          - { name: windows-x86_64, os: windows-latest }
+          - { name: linux-x86_64,    os: ubuntu-latest }
+          - { name: linux-aarch64,   os: ubuntu-24.04-arm }
+          - { name: fedora-x86_64,   os: ubuntu-latest, container: "fedora:latest" }
+          - { name: macos-aarch64,   os: macos-latest }
+          - { name: windows-x86_64,  os: windows-latest }
           - { name: windows-aarch64, os: windows-11-arm }
     steps:
-      # gcc: ring compiles C. git: build.rs no longer needs it, but actions/checkout clones with it when
-      # present (and only downloads an archive without it), and the Fedora image does not ship it.
-      # rust & cargo: installed from Fedora's signed RPM repositories rather than piping sh.rustup.rs to sh.
       - name: Install dependencies (Fedora)
         if: matrix.container
         run: dnf install -y git gcc rust cargo
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Install Rust
         if: ${{ !matrix.container }}
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Build
         run: cargo build --locked --verbose
@@ -121,7 +96,6 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --locked --verbose
 
-      # These touch no network.
       - name: Smoke test the binary
         shell: bash
         run: |
@@ -133,60 +107,30 @@ jobs:
             [ -n "$out" ] || { echo "no $shell completions"; exit 1; }
           done
 
-      # A real query, on every OS and architecture: the unit tests are offline, so nothing else shows the
-      # resolver, the sockets and the output code work together. It asks 8.8.8.8 directly (not the runner's
-      # resolver), then dns.google by host name (which the runner's resolver turns into an address), and
-      # checks the shape of the answers, with a retry for a network blip. A persistent failure fails this
-      # job, and with it `CI OK`. See scripts/smoke_dns.sh.
       - name: Smoke test a real DNS query
         shell: bash
         run: bash scripts/smoke_dns.sh
 
   man:
     name: Man page
-    needs: changes
-    if: needs.changes.outputs.man == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: extractions/setup-just@v4
-
-      - name: Install pandoc
-        run: sudo apt-get update && sudo apt-get install -y pandoc
-
-      - name: Build the man page
-        run: just man
-
-      # An empty or truncated file (a failed pandoc leaves one behind) has no .TH header.
-      - name: Check the man page is valid roff
+      - name: Verify committed man page matches Cargo.toml and is valid roff
         run: |
-          grep -q '^\.TH' target/man/dog.1
-          man -l target/man/dog.1 > /dev/null
+          python3 scripts/man_pages.py --self-test
+          python3 scripts/man_pages.py --check
+          grep -q '^\.TH' man/dog.1
+          man -l man/dog.1 > /dev/null
 
-  # The single status check that branch protection requires. All of the logic is in
-  # scripts/ci_gate.py, which has a self-test and is documented there. In short:
-  #
-  #   * it asks the API what every job ACTUALLY concluded, and does not rely on `needs.*.result`
-  #     alone: a job cancelled in the runner queue reports `abandoned`, which the original gate did
-  #     not recognise, so it passed a run whose jobs had all been cancelled (GitHub Actions outage,
-  #     2026-10-05);
-  #   * it recomputes the change classification itself, so a job a code change needs but that was
-  #     SKIPPED fails: that is how a misclassification would hide;
-  #   * it fails CLOSED: an API error, a job group missing from the run, a `changes` job that did
-  #     not succeed, or any result it does not recognise all fail it.
-  #
-  # `if: always()` is still needed, or a failed dependency would SKIP this job and a skipped
-  # required check counts as passing.
   ci-ok:
     name: CI OK
     if: always()
-    needs: [ changes, lints, test, man ]
+    needs: [ lints, test, man ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Lets the job read this run's job list and the PR's file list. When release.yml calls this
-    # workflow, the caller must grant the same, because a called workflow cannot widen its caller's token.
     permissions:
       contents: read
       actions: read
@@ -195,11 +139,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RUN_ID: ${{ github.run_id }}
-      EVENT_NAME: ${{ github.event_name }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
       NEEDS_JSON: ${{ toJSON(needs) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Verify the jobs this change needs ran, and that every job succeeded
+      - name: Verify every CI job group ran and succeeded
         run: python3 scripts/ci_gate.py

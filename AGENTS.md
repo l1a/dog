@@ -97,62 +97,21 @@ something a user sees, in which case it follows the questions above.
 - **Dependabot PRs are not merged.** They close by themselves once `master` carries the update. We open our own PR to resolve
   what Dependabot found, and that PR follows this process, bump included. The same goes for any other auto-generated PR.
 - **How it is enforced** (a Justfile recipe and a hook, not agent configuration, so it binds a human, Claude and Gemini alike):
-  - `just pr` is the pre-PR gate: feature branch, clean tree, version bump, the scripts' self-tests (`just scripts-check`, which
-    include the packaging templates), `cargo build --locked`, `just` (fmt, clippy `--all-targets`, tests), an advisory
-    `cargo audit`, then a manual checklist answered by typing `y` or by `PR_CONFIRM=y` for a non-interactive caller (only after
-    actually checking each item).
-  - **`just open-pr` instead of `gh pr create`**: it runs the gate, then `gh pr create --repo l1a/dog --base master "$@"`. Pass a
-    multi-line body with `--body-file`. The arguments reach `gh` intact because the recipe uses `[positional-arguments]` and `"$@"`:
-    `{{ARGS}}` joins them with spaces and no quoting, so a title with spaces became several words and a backtick in the body
-    **ran as a command**.
-  - `just merge-pr` refuses to merge unless every check is `SUCCESS` on the PR's current head (no checks at all is not green).
-    Run it only when merging has been authorised.
-  - `just install-hooks` installs a `pre-push` hook that runs fmt and clippy; skip once with `GIT_NO_CHECK=1`.
-  - **`version.yml` is an advisory CI job** (`Version bumped`). It is not a required check, so it informs without blocking, and it
-    is skipped for `dependabot[bot]`. It has no `paths:` filter, because the rule has no carve-out.
-- **Baseline.** `0.7.0` is the first bump under this rule. It covers everything merged since `v0.6.0` without one (the `dogdns`
-  crate, the COPR/AUR/Homebrew packaging, ARM release archives, the hickory update), as one minor bump.
+  - `just pr` is the pre-PR gate: feature branch, clean tree, version bump, offline quality gate (`just check`, including `fmt-check`, `clippy`, `standard-check`, `man-check`, `packaging-check`, `scripts-check`, `text-check`, `wip-check`), `cargo build --locked`, `just test`, an advisory `cargo audit`, then a manual checklist answered by typing `y` or by `PR_CONFIRM=y` for a non-interactive caller (only after actually checking each item).
+  - **`just open-pr` instead of `gh pr create`**: it runs the gate, pushes if the branch has no upstream, and then runs `gh pr create --repo l1a/dog --base master "$@"`. Pass a multi-line body with `--body-file`. The arguments reach `gh` intact because the recipe uses `[positional-arguments]` and `"$@"`: `{{ARGS}}` joins them with spaces and no quoting, so a title with spaces became several words and a backtick in the body **ran as a command**.
+  - `just merge-pr` refuses to merge unless every check is `SUCCESS` on the PR's current head (no checks at all is not green), merges with `--merge`, and updates `WIP.md` in place (`scripts/reset_wip.py`). Run it only when merging has been authorised.
+  - `just install-hooks` (`scripts/install_hooks.py`) installs a `pre-push` hook that runs `just check`; skip once with `GIT_NO_CHECK=1`.
+  - **`version.yml` is an advisory CI job** (`Version bumped`). It is not a required check, so it informs without blocking, and it is skipped for `dependabot[bot]`. It has no `paths:` filter, because the rule has no carve-out.
+- **Baseline.** `0.7.0` is the first bump under this rule. It covers everything merged since `v0.6.0` without one (the `dogdns` crate, the COPR/AUR/Homebrew packaging, ARM release archives, the hickory update), as one minor bump.
 
 ## Source control and CI
 
-- **Trunk on `master`.** Short-lived `{feature,fix,chore,docs}/<name>` branches (`docs/` for a change that touches only documentation; `just pr` enforces the names and that rule, via `scripts/branch_gate.py`) are PR'd into `master`. The old `dev` and
-  `dependabot` branches are retired; Dependabot targets `master`.
-- **`just` is the local mirror of CI.** `just` = build + `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + tests.
-  Run it before pushing. A new Rust release can add lints, so `master` can go red with no code change.
-- **`.github/workflows/ci.yml`** runs on every PR and push to `master`: format and clippy, tests on Linux (x86_64, aarch64,
-  Fedora), macOS and Windows (x86_64, aarch64), and a man-page build.
-- **A docs-only PR skips the full suite, but not with `paths:` filters.** Branch protection requires the single `CI OK` job, and a
-  workflow filtered out by `paths:` never reports a status, so the PR would wait on a required check forever. Instead a `changes`
-  job (`scripts/ci_changes.py`) classifies the PR's files and `lints`, `test` and `man` are skipped with `if:`; `CI OK` always runs.
-  - **docs-only**: every changed file is Markdown at the repository root, `LICENSE`, the screenshot, or an issue or PR template.
-    Nothing is built or tested.
-  - **man**: `man/` changed. Only `Man page` runs (pandoc is the one thing a `man/` change can break).
-  - **code**: anything else, including `Cargo.toml`, `Cargo.lock`, `src/`, `scripts/`, `packaging/`, **every workflow file**, and
-    Markdown in a subdirectory (a build input: `man/dog.1.md`, `packaging/**/*.md`). The full suite runs.
-  - **Only pull requests take the fast path.** A push to `master`, a release (`workflow_call`), a manual run, and any doubt (an API
-    error, an empty or truncated file list) run everything. A rename counts both the old and the new name, so moving a code file to
-    a docs path does not read as docs-only. `version.yml` still runs on docs-only PRs, because the rule has no carve-out.
-  - **The required version bump does not count as a code change.** Without this no PR that follows the rules could be docs-only, since
-    the bump edits `Cargo.toml` and `Cargo.lock`. `ci_changes.py` fetches both files at the merge base and at the head and ignores
-    them only if each differs in exactly one line, that line is `version = "..."`, TOML confirms it is dogdns's own version, and it is
-    the same old -> new in both. Anything else in either file, one file without the other, a rename, or a fetch error counts them as
-    code. A PR that changes only the version files is still code. (A docs-only PR was `code` for its first two weeks; PR #31 showed it.)
-- **`CI OK` is `scripts/ci_gate.py`.** It asks the API what every job concluded and does not trust `needs.*.result` alone. During a
-  GitHub Actions outage (2026-10-05) the original gate passed a run whose Format and Clippy, Man page and Fedora jobs were all
-  *cancelled*: a job cancelled in the runner queue reports **`abandoned`**, not `cancelled`, so `contains(..., 'cancelled')` was
-  false. The run's own conclusion was correctly `failure`; only the job-level check was wrong, and branch protection trusts the job.
-  It **recomputes the change classification itself** rather than trusting the `changes` job, and checks the jobs that class needs:
-  - **code**: all three groups must be exactly `success`. A job the change needs that was *skipped* fails: that is how a
-    misclassification would hide.
-  - **man**: `Man page` must succeed; the others may be skipped. **docs-only**: all may be skipped.
-  - Anything else fails: `failure`, `cancelled`, `abandoned`, a job group missing from the run, a `changes` job that did not succeed,
-    an API error, or any result it does not recognise. `if: always()` is needed because a *skipped* required check counts as passing.
-  When `release.yml` calls `ci.yml` the caller must grant `actions: read` **and `pull-requests: read`**, because a called workflow
-  cannot widen its caller's token (job names then carry a `CI / ` prefix, which the gate allows for).
-- **Test a CI gate against the real failure, not against a green run.** `ci_gate.py` and `ci_changes.py` have self-tests with the
-  incident data in them, and the whole flow (23 cases: the fast paths, a rename hiding a code file, an API error, a push, and the
-  incident replayed) was run through their real entry points under a fake `gh`. A gate that has only ever seen green runs has not been
-  shown to fail. Every case must name the message it expects, or it can pass for an unrelated reason.
+- **Trunk on `master`.** Short-lived `{feature,fix,chore,docs}/<name>` branches (`docs/` for a change that touches only documentation; `just pr` enforces the names and that rule, via `scripts/branch_gate.py`) are PR'd into `master`. The old `dev` and `dependabot` branches are retired; Dependabot targets `master`.
+- **`just` and `just check` mirror CI locally.** `just` = build + `fmt-check` + `clippy` + tests; `just check` runs all offline quality gates (`fmt-check`, `clippy`, `standard-check`, `man-check`, `packaging-check`, `scripts-check`, `text-check`, `wip-check`) and is wired into `scripts/hooks/pre-push`. `just fmt` formats in place; `just fmt-check` checks formatting; `just lint` is an alias for `just clippy`.
+- **Man page (`man/dog.1.md` -> committed `man/dog.1`).** Rendered by `just man` (`scripts/man_pages.py --write` using `mandown`) and committed to the repository. `just man-check` verifies both worktree and `HEAD` agree with `Cargo.toml` and carry no raw mdoc macros. Run `just man` after every version bump or edit to `man/dog.1.md`.
+- **`.github/workflows/ci.yml`** runs on every PR and push to `master`: offline script/repository guards + format and clippy, tests on Linux (x86_64, aarch64, Fedora), macOS and Windows (x86_64, aarch64), and `man` (`man_pages.py --check` + `man -l man/dog.1`). All GitHub Actions across all workflows are pinned to 40-char commit SHAs.
+- **`CI OK` is `scripts/ci_gate.py`.** It asks the API what every job concluded and does not trust `needs.*.result` alone. During a GitHub Actions outage (2026-10-05) the original gate passed a run whose Format and Clippy, Man page and Fedora jobs were all *cancelled*: a job cancelled in the runner queue reports **`abandoned`**, not `cancelled`, so `contains(..., 'cancelled')` was false. The run's own conclusion was correctly `failure`; only the job-level check was wrong, and branch protection trusts the job. Every job group (`Format and Clippy`, `Test (...)`, `Man page`) must conclude `success`; anything else (`failure`, `skipped`, `cancelled`, `abandoned`, missing group, or API error) fails the gate. When `release.yml` calls `ci.yml` the caller must grant `actions: read` and `pull-requests: read`.
+- **Test a CI gate against the real failure, not against a green run.** `ci_gate.py` has a self-test with the incident data in it. A gate that has only ever seen green runs has not been shown to fail.
 - **`timeout-minutes` bounds a job that is running and hung. It does not count time spent waiting for a runner**, so it cannot
   shorten a stall in GitHub's queue (about 15 minutes before the job is cancelled). Rerun cancelled jobs once the queue clears.
   **A job cancelled with no runner says why in its annotations**, and githubstatus.com may not:
@@ -241,10 +200,7 @@ something a user sees, in which case it follows the questions above.
   `scripts/render_packaging.py` fills from `Cargo.toml` at build time. A stale version cannot be committed when no version is
   committed. The renderer treats a substitution that matches nothing, and a sentinel that survives rendering, as hard errors;
   `just packaging-check` (`--self-test`) proves each guard can fail.
-- **COPR** builds `master`'s tip with `make_srpm` (`.copr/Makefile`), using an archive of the checkout as `Source0`, so a PR can
-  build its own SRPM. `copr.yml` rebuilds on a `v*` tag and **refuses unless the tag is the tip of master** (COPR clones master,
-  not the tag, and a published NEVRA cannot be recalled). It skips cleanly when the `COPR_*` secrets are absent. The man page
-  is rendered from `man/dog.1.md` with pandoc at build time, not committed.
+- **COPR** builds from the exact commit/tag ref with `make_srpm` (`.copr/Makefile`), using an archive of the checkout as `Source0`, so a PR can build its own SRPM. `copr.yml` rebuilds on a `v[0-9]*` tag (`copr-cli buildscm --commit "$REF"`), fails on `l1a/dog` if the `COPR_*` secrets are absent, and skips cleanly on forks. `scripts/copr_check.py` enforces these invariants. The committed `man/dog.1` is installed directly.
 - **Test the RPM for real, not just the SRPM.** `packaging.yml` runs `make -f .copr/Makefile srpm`, `dnf builddep`, then
   `rpmbuild --rebuild` (which runs `%build`, `%install` and `%check`), checks the file list, installs it (`rpm -ivh --nodeps --nosignature`, since Fedora 45 / RPM 6 requires a signature by default and a local `rpmbuild` is unsigned) and runs `dog --version`.
   The same sequence runs locally in `podman run registry.fedoraproject.org/fedora:latest`. Install `git` before anything calls it;
@@ -252,7 +208,7 @@ something a user sees, in which case it follows the questions above.
 - **`--locked` is load-bearing** in the spec: COPR builds with network access and no vendoring, so `Cargo.lock` is the only thing
   pinning what is built to what CI tested.
 - **AUR (`dogdns`) and Homebrew (`l1a/homebrew-dog`)** use the same templates (`packaging/aur/PKGBUILD.in`, `SRCINFO.in`,
-  `packaging/homebrew/dog.rb`) and are published by `scripts/publish_packaging.py` (`just publish-aur X`, `just publish-brew X`).
+  `packaging/homebrew/dog.rb`) and are published by `scripts/publish_packaging.py` (`just aur-publish X` / `just publish-aur X`, `just brew-publish X` / `just publish-brew X`).
   It downloads the tag tarball, computes the sha256 from what it got, renders, shows the diff, and requires typing the version
   before it pushes. It is tested against local bare repositories (`--remote`, `--tarball`). **`.SRCINFO` is never hand-written**:
   `SRCINFO.in` is derived from `makepkg --printsrcinfo`, and `packaging.yml` fails if the rendered pair disagrees with makepkg.
@@ -270,17 +226,28 @@ something a user sees, in which case it follows the questions above.
   writable host directory, or a later host-side write fails and a check silently compares stale files.
 - **Homebrew is verified by `packaging.yml`'s `homebrew` job** (`brew audit --strict`, `brew install --HEAD`, `brew test`) through a
   throwaway local tap, because Homebrew only installs formulae from a tap. It cannot be run locally here (no brew), so that job
-  is the first real test of the formula. `Homebrew/actions/setup-homebrew@main` tracks rolling `stable`. **Since Homebrew 7.0.11
+  is the first real test of the formula. `Homebrew/actions/setup-homebrew` is SHA-pinned. **Since Homebrew 7.0.11
   (2026-10-26, Homebrew/brew#24352), `brew audit` no longer implicitly trusts a fully-qualified third-party formula** — only
   `install`/`reinstall`/`upgrade` do — so the job runs `brew trust --formula l1a/test/dog` before audit. Prefer that over
   trusting the whole throwaway tap. PR #43 failed on audit until this was added.
-- Packaging is **not** a required check, so a skipped job blocks nothing, and `packaging.yml`, `metadata.yml` and `security.yml` skip
-  their jobs for a PR with nothing to check. They do **not** use `on.pull_request.paths`, because every PR bumps `Cargo.toml` and
-  `Cargo.lock`, which those filters list, so a docs-only PR still started the COPR, AUR and Homebrew builds. Each has a `changes` job
-  running `scripts/path_filter.py`, which matches the PR's files against the workflow's own `on.push.paths` (the one list, not
-  written twice) and ignores the version files only when `ci_changes.py`'s proof says the change is a bare bump. A bump alone, a
-  non-PR event, a workflow it cannot read and any API error all run the jobs. **Add a path to `on.push.paths` and the PR filter
-  follows.** `ci.yml` may not use `paths:` at all (see above), and CodeQL is GitHub's default setup, so it still runs on every PR.
+- Packaging is **not** a required check, so `packaging.yml`, `metadata.yml` and `security.yml` use `paths:` filters on `push` and `pull_request`.
+
+## Sandbox Exceptions (BypassSandbox: true)
+
+Per `~/AGENTS.md` §6 (**Sandbox Bypass & Sandbox Learning Loop**), always run the following command classes with `BypassSandbox: true` on the **first** attempt — never try them with `BypassSandbox: false` first:
+
+- **All `gh` / `ghpub` commands** (`gh pr ...`, `gh run ...`, `gh workflow ...`, `gh api ...`, `gh issue ...`): require network access to `api.github.com`.
+- **All `git` write or remote commands** (`git checkout -b`, `git switch`, `git branch -d/-D`, `git add`, `git rm`, `git commit`, `git merge`, `git rebase`, `git tag`, `git fetch`, `git pull`, `git push`): `.git/` is mounted read-only in the sandbox and remote ops need network access.
+- **`just` shebang and network/container recipes (`#!/usr/bin/env bash` recipes fail in the sandbox with `/run/user/1000/just: Read-only file system (os error 30)`):**
+  - `just pr` / `PR_CONFIRM=y just pr`, `PR_CONFIRM=y just open-pr --fill`, `just merge-pr`, `just prune-branches`, `just install-tag`
+  - `just smoke-dns` / `scripts/smoke_dns.sh` (queries live DNS at `8.8.8.8` and `dns.google`)
+  - `just github-metadata`, `just aur-publish` / `just publish-aur`, `just brew-publish` / `just publish-brew`
+  - `just update-deps`, `just coverage-docker`
+- **Cargo network operations:** `cargo update` (use `cargo --config net.retry=0 update` with `BypassSandbox: true`), `cargo fetch`, `cargo publish`, `cargo audit`, and the first build after `Cargo.lock` updates a crate not yet cached in `~/.cargo/registry/cache/`.
+- **Commands that DO work in the sandbox (`BypassSandbox: false`):**
+  - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
+  - Direct `python3 scripts/*.py --self-test` calls
+  - Read-only `git` commands: `git status`, `git diff`, `git log`, `git show`, `git rev-parse`, `git for-each-ref`
 
 ## Known issues
 
