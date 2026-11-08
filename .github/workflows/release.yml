@@ -21,9 +21,11 @@ jobs:
     name: Verify tag and lockfile
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       - name: Tag matches Cargo.toml
         if: github.ref_type == 'tag'
@@ -39,6 +41,7 @@ jobs:
       - name: Cargo.lock and man page are up to date
         run: |
           cargo metadata --locked --format-version 1 > /dev/null
+          cargo install --locked mandown
           python3 scripts/man_pages.py --check
 
   ci:
@@ -64,9 +67,11 @@ jobs:
           - { os: windows-latest,   suffix: windows-x86_64 }
           - { os: windows-11-arm,   suffix: windows-aarch64 }
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
