@@ -99,7 +99,7 @@ something a user sees, in which case it follows the questions above.
 - **How it is enforced** (a Justfile recipe and a hook, not agent configuration, so it binds a human, Claude and Gemini alike):
   - `just pr` is the pre-PR gate: feature branch, clean tree, version bump, offline quality gate (`just check`, including `fmt-check`, `clippy`, `standard-check`, `man-check`, `packaging-check`, `scripts-check`, `text-check`, `wip-check`), `cargo build --locked`, `just test`, an advisory `cargo audit`, then a manual checklist answered by typing `y` or by `PR_CONFIRM=y` for a non-interactive caller (only after actually checking each item).
   - **`just open-pr` instead of `gh pr create`**: it runs the gate, pushes if the branch has no upstream, and then runs `gh pr create --repo l1a/dog --base master "$@"`. Pass a multi-line body with `--body-file`. The arguments reach `gh` intact because the recipe uses `[positional-arguments]` and `"$@"`: `{{ARGS}}` joins them with spaces and no quoting, so a title with spaces became several words and a backtick in the body **ran as a command**.
-  - `just merge-pr` refuses to merge unless every check is `SUCCESS` on the PR's current head (no checks at all is not green), merges with `--merge`, and updates `WIP.md` in place (`scripts/reset_wip.py`). Run it only when merging has been authorised.
+  - `just merge-pr` refuses to merge unless every check is `SUCCESS` or `NEUTRAL` on the PR's current head (no checks at all is not green), refuses fail-closed via GraphQL if any security/bug scanner or review bot feedback is unresolved across all three channels — unresolved inline `reviewThreads` (e.g. `Cursor Bugbot`, `Cursor Security Agent`, `CodeQL`), `CHANGES_REQUESTED` `latestReviews`, or top-level PR `comments` authored by automated review bots (`claude[bot]` / **Claude Code Review**, `cursor[bot]`, `github-advanced-security[bot]`, `codeql`) — unless `MERGE_ALLOW_COMMENTS=1` is set after inspecting and addressing every finding, merges with `--merge`, and updates `WIP.md` in place (`scripts/reset_wip.py`). Always check for open Dependabot PRs (`gh pr list --repo l1a/dog --author "app/dependabot"`) and review/address them before merging. Run `just merge-pr` only when merging has been authorised.
   - `just install-hooks` (`scripts/install_hooks.py`) installs a `pre-push` hook that runs `just check`; skip once with `GIT_NO_CHECK=1`.
   - **`version.yml` is an advisory CI job** (`Version bumped`). It is not a required check, so it informs without blocking, and it is skipped for `dependabot[bot]`. It has no `paths:` filter, because the rule has no carve-out.
 - **Baseline.** `0.7.0` is the first bump under this rule. It covers everything merged since `v0.6.0` without one (the `dogdns` crate, the COPR/AUR/Homebrew packaging, ARM release archives, the hickory update), as one minor bump.
@@ -232,7 +232,7 @@ something a user sees, in which case it follows the questions above.
   trusting the whole throwaway tap. PR #43 failed on audit until this was added.
 - Packaging is **not** a required check, so `packaging.yml`, `metadata.yml` and `security.yml` use `paths:` filters on `push` and `pull_request`.
 
-## Sandbox Exceptions (BypassSandbox: true)
+## Sandbox Bypass (`BypassSandbox: true`) & Sandbox Learning Loop
 
 Per `~/AGENTS.md` §6 (**Sandbox Bypass & Sandbox Learning Loop**), always run the following command classes with `BypassSandbox: true` on the **first** attempt — never try them with `BypassSandbox: false` first:
 
@@ -248,6 +248,11 @@ Per `~/AGENTS.md` §6 (**Sandbox Bypass & Sandbox Learning Loop**), always run t
   - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
   - Direct `python3 scripts/*.py --self-test` calls
   - Read-only `git` commands: `git status`, `git diff`, `git log`, `git show`, `git rev-parse`, `git for-each-ref`
+- **Repo-Local Sandbox Learning Loop:**
+  1. **Read before running:** Check this section (plus any staged entries in `WIP.md`) at session start and pass `BypassSandbox: true` on the **first** invocation for every listed command/recipe.
+  2. **Learn on first failure (never fail twice on the same sandbox boundary):** If a command run with `BypassSandbox: false` fails because of a sandbox boundary (`Read-only file system`, `Could not resolve host`, `no connections available`, `Permission denied` on a non-workspace path/socket, or unmounted interpreter), immediately re-run with `BypassSandbox: true` (do not retry with `BypassSandbox: false`).
+  3. **Clean-tree staging (`WIP.md`):** If a new repo-specific sandbox exception is discovered while on `master` or after a PR's final commit is already pushed and waiting to merge (where modifying tracked `AGENTS.md` would dirty the working tree or invalidate CI checks), record it immediately in `WIP.md` under `## Sandbox Exceptions (staged for AGENTS.md)`.
+  4. **Fold into `AGENTS.md` on the next PR:** Promote any staged entries from `WIP.md` into this section of `AGENTS.md` (or `~/AGENTS.md` §6 if universal) in the very next commit/PR and remove the staged section from `WIP.md`.
 
 ## Known issues
 

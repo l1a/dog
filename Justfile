@@ -410,15 +410,36 @@ merge-pr:
         gh pr checks "$PR" --repo l1a/dog >&2 || true
         exit 1
     fi
+    if ! printf '%s' "$STATES" | tr -d '[:space:]' | grep -qE '^\["(SUCCESS|NEUTRAL)"(,"(SUCCESS|NEUTRAL)")*\]$'; then
+        echo "Error: Not all checks concluded SUCCESS or NEUTRAL on this branch:" >&2
+        gh pr checks "$PR" --repo l1a/dog >&2 || true
+        exit 1
+    fi
     [ "$(gh pr view "$PR" --repo l1a/dog --json mergeable --jq .mergeable)" = "MERGEABLE" ] \
         || { echo "Error: the PR is not mergeable (conflicts, or GitHub is still working it out)."; exit 1; }
     echo "CI is green on every check."
+
+    if ! UNRESOLVED=$(gh api graphql -F owner='l1a' -F name='dog' -F pr="$PR" \
+        -f query='query($owner: String!, $name: String!, $pr: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved } } latestReviews(first: 100) { pageInfo { hasNextPage } nodes { state } } comments(first: 100) { pageInfo { hasNextPage } nodes { author { login } } } } } }' \
+        --jq 'if .data.repository.pullRequest == null then error("missing pullRequest") else ([.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length) + ([.data.repository.pullRequest.latestReviews.nodes[] | select(.state == "CHANGES_REQUESTED")] | length) + ([.data.repository.pullRequest.comments.nodes[] | select((.author.login // "") | test("^(claude|cursor|github-advanced-security|codeql)"; "i"))] | length) + (if .data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage or .data.repository.pullRequest.latestReviews.pageInfo.hasNextPage or .data.repository.pullRequest.comments.pageInfo.hasNextPage then 1 else 0 end) end') \
+        || ! [[ "$UNRESOLVED" =~ ^[0-9]+$ ]]; then
+        echo "Error: Could not query review/scanner feedback for PR #${PR}." >&2
+        exit 1
+    fi
+    if [ "${UNRESOLVED}" != "0" ] && [ "${MERGE_ALLOW_COMMENTS:-}" != "1" ]; then
+        echo "Error: PR #${PR} has ${UNRESOLVED} unaddressed review/scanner finding(s) (e.g. Claude Code Review, Cursor Bugbot, Cursor Security Agent, CodeQL):" >&2
+        gh api graphql -F owner='l1a' -F name='dog' -F pr="$PR" \
+            -f query='query($owner: String!, $name: String!, $pr: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { isResolved path line comments(first: 1) { nodes { author { login } body } } } } latestReviews(first: 100) { nodes { state author { login } body } } comments(first: 100) { nodes { author { login } body } } } } }' \
+            --jq '((.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | "  - [thread:\(.comments.nodes[0].author.login // "?")] \(.path):\(.line // "?"): \((.comments.nodes[0].body // "") | split("\n")[0])"), (.data.repository.pullRequest.latestReviews.nodes[] | select(.state == "CHANGES_REQUESTED") | "  - [review:\(.author.login // "?")] CHANGES_REQUESTED: \((.body // "") | split("\n")[0])"), (.data.repository.pullRequest.comments.nodes[] | select((.author.login // "") | test("^(claude|cursor|github-advanced-security|codeql)"; "i")) | "  - [comment:\(.author.login // "?")] \((.body // "") | split("\n")[0])"))' >&2
+        echo "Inspect and address all findings first, or re-run with MERGE_ALLOW_COMMENTS=1 once verified." >&2
+        exit 1
+    fi
+
     gh pr merge "$PR" --repo l1a/dog --merge
     git checkout master
     git pull -q origin master
     git branch -D "$BRANCH" 2>/dev/null || true
-    VER=$("{{PY}}" scripts/render_packaging.py --print-version)
-    "{{PY}}" scripts/reset_wip.py --branch master --pr "$PR" --version "$VER"
+    "{{PY}}" scripts/reset_wip.py
 
 
 #---------------#

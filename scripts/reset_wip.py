@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Reset WIP.md's generated state block after merging a feature branch to main, and guard its line endings."""
+"""Reset WIP.md's generated state block after merging a feature branch to master, and guard its line endings."""
 
 import argparse
 import datetime
@@ -102,12 +102,12 @@ def _cell(value):
 def render_state_block(state):
     """Render the generated block, markers included, with LF line endings."""
     branch = state.get("branch")
-    if branch in (None, "main"):
-        active = "none — `main` is current"
+    if branch in (None, "master"):
+        active = "none — `master` is current"
     else:
-        active = f"`{_cell(branch)}` — **not `main`**; check what is checked out"
+        active = f"`{_cell(branch)}` — **not `master`**; check what is checked out"
 
-    version = f"`rusticprofile` {_cell(state.get('version') or 'unknown')}"
+    version = f"`dog` {_cell(state.get('version') or 'unknown')}"
 
     head = f"`{_cell(state.get('head_hash') or 'unknown')}`"
     if state.get("head_subject"):
@@ -116,7 +116,7 @@ def render_state_block(state):
     tag = state.get("newest_tag")
     rows = [
         ("Active branch", active),
-        ("main HEAD", head),
+        ("master HEAD", head),
         ("Version", version),
         ("Newest tag", f"`{_cell(tag)}`" if tag else "none"),
         ("Updated", f"{_cell(state.get('date') or 'unknown')}, by `just merge-pr`"),
@@ -191,11 +191,11 @@ def self_test():
             failures.append(f"{name}: {detail}")
 
     state = {
-        "branch": "main",
+        "branch": "master",
         "head_hash": "abc1234",
         "head_subject": "Fix a | b (#1)",
-        "version": "0.2.58",
-        "newest_tag": "v0.2.56",
+        "version": "0.8.4",
+        "newest_tag": "v0.8.3",
         "date": "2026-11-07",
     }
     block = render_state_block(state)
@@ -203,10 +203,10 @@ def self_test():
     check("block starts with BEGIN", block.startswith(BEGIN_MARKER + "\n"), repr(block[:40]))
     check("block ends with END", block.endswith(END_MARKER + "\n"), repr(block[-40:]))
     check("pipe in subject is escaped", "Fix a \\| b (#1)" in block, block)
-    check("main renders as none", "none — `main` is current" in block, block)
-    check("version rendered", "`rusticprofile` 0.2.58" in block, block)
+    check("master renders as none", "none — `master` is current" in block, block)
+    check("version rendered", "`dog` 0.8.4" in block, block)
     off_main = render_state_block({**state, "branch": "feature/x"})
-    check("off-main branch is flagged", "**not `main`**" in off_main, off_main)
+    check("off-master branch is flagged", "**not `master`**" in off_main, off_main)
     no_tag = render_state_block({**state, "newest_tag": None})
     check("no tag renders as none", "| **Newest tag** | none |" in no_tag, no_tag)
     check(
@@ -346,7 +346,7 @@ def main():
 
     where = "at the top of the file (first run)" if action == "inserted" else "in place"
     print(
-        f"WIP.md state block {action} {where}: main HEAD `{state['head_hash']}`, "
+        f"WIP.md state block {action} {where}: master HEAD `{state['head_hash']}`, "
         f"v{state['version']}. Hand-written entries outside the markers are unchanged."
     )
 

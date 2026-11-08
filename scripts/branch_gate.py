@@ -24,8 +24,37 @@ import sys
 PREFIXES = ("feature", "fix", "chore", "docs")
 NAME = re.compile(r"(feature|fix|chore|docs)/[A-Za-z0-9][A-Za-z0-9._-]*")
 
-DOC_EXACT = {"LICENSE", "dog-screenshot.png", ".github/pull_request_template.md", "Cargo.toml", "Cargo.lock"}
+DOC_EXACT = {"LICENSE", "dog-screenshot.png", ".github/pull_request_template.md"}
 DOC_PREFIXES = ("man/", ".github/ISSUE_TEMPLATE/")
+
+_VERSION_LINE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
+_LOCK_HEADER = re.compile(r'^\[\[package\]\]\nname = "dogdns"\nversion = "([^"]+)"\n', re.MULTILINE)
+
+
+def version_only_change(old_cargo: str, new_cargo: str, old_lock: str, new_lock: str) -> bool:
+    """True when `Cargo.toml` and `Cargo.lock` change ONLY the dogdns version line."""
+    old_lines, new_lines = old_cargo.splitlines(), new_cargo.splitlines()
+    if len(old_lines) != len(new_lines):
+        return False
+    cargo_diffs = [(a, b) for a, b in zip(old_lines, new_lines) if a != b]
+    if len(cargo_diffs) != 1:
+        return False
+    old_m, new_m = _VERSION_LINE.match(cargo_diffs[0][0]), _VERSION_LINE.match(cargo_diffs[0][1])
+    if not old_m or not new_m or old_m.group(1) == new_m.group(1):
+        return False
+    old_ver, new_ver = old_m.group(1), new_m.group(1)
+
+    if old_lock == new_lock:
+        return True
+    lock_m = _LOCK_HEADER.search(old_lock)
+    if not lock_m or lock_m.group(1) != old_ver:
+        return False
+    expected = (
+        old_lock[: lock_m.start()]
+        + f'[[package]]\nname = "dogdns"\nversion = "{new_ver}"\n'
+        + old_lock[lock_m.end() :]
+    )
+    return new_lock == expected
 
 
 def is_doc_path(path: str) -> bool:
@@ -36,18 +65,19 @@ def is_doc_path(path: str) -> bool:
     return "/" not in path and path.endswith(".md")
 
 
-def non_doc_files(paths: list[str]) -> list[str]:
-    return [p for p in paths if not is_doc_path(p)]
+def non_doc_files(paths: list[str], *, version_bump: bool = True) -> list[str]:
+    allowed_bump = {"Cargo.toml", "Cargo.lock"} if version_bump else set()
+    return [p for p in paths if p not in allowed_bump and not is_doc_path(p)]
 
 
-def check(branch: str, changed_paths: list[str] | None) -> list[str]:
+def check(branch: str, changed_paths: list[str] | None, *, version_bump: bool = True) -> list[str]:
     """What is wrong with the branch. `changed_paths` is only consulted for a docs/ branch."""
     if not NAME.fullmatch(branch):
         return [f"branch '{branch}' must be named {{{','.join(PREFIXES)}}}/<name> (letters, digits, '.', '_', '-')"]
     if branch.startswith("docs/"):
         if changed_paths is None:
             return ["could not list the changed files, so cannot confirm this is a docs-only change"]
-        bad = non_doc_files(changed_paths)
+        bad = non_doc_files(changed_paths, version_bump=version_bump)
         if bad:
             return [
                 f"'{branch}' is for documentation only, but this change touches {bad[0]} "
@@ -63,13 +93,23 @@ def git(*args: str) -> str:
     return out.stdout
 
 
-def changed_since(base: str) -> list[str]:
+def changed_since(base: str) -> tuple[list[str], bool]:
     merge_base = git("merge-base", base, "HEAD").strip()
     paths: list[str] = []
     for line in git("diff", "--name-only", merge_base, "HEAD").splitlines():
         if line.strip():
             paths.append(line.strip())
-    return paths
+    bump_only = False
+    if "Cargo.toml" in paths or "Cargo.lock" in paths:
+        try:
+            old_cargo = git("show", f"{merge_base}:Cargo.toml")
+            new_cargo = git("show", "HEAD:Cargo.toml")
+            old_lock = git("show", f"{merge_base}:Cargo.lock")
+            new_lock = git("show", "HEAD:Cargo.lock")
+            bump_only = version_only_change(old_cargo, new_cargo, old_lock, new_lock)
+        except RuntimeError:
+            bump_only = False
+    return paths, bump_only
 
 
 def self_test() -> None:
@@ -78,7 +118,22 @@ def self_test() -> None:
     wf = [".github/workflows/ci.yml"]
     for ok in ["feature/x", "fix/broken-pipe", "chore/remove-datetime", "docs/project-descriptions", "fix/a.b_c-1"]:
         assert check(ok, code) == [] or ok.startswith("docs/"), ok
-    assert check("docs/readme", docs) == []
+    assert check("docs/readme", docs, version_bump=True) == []
+    # A docs/ branch that modifies Cargo.toml beyond the version line must be rejected.
+    dep_change = check("docs/readme", docs, version_bump=False)
+    assert dep_change and "Cargo.toml" in dep_change[0], dep_change
+
+    c_old = '[package]\nname = "dogdns"\nversion = "0.8.4"\n[dependencies]\nlibc = "0.2"\n'
+    c_new = '[package]\nname = "dogdns"\nversion = "0.8.5"\n[dependencies]\nlibc = "0.2"\n'
+    c_dep = '[package]\nname = "dogdns"\nversion = "0.8.5"\n[dependencies]\nlibc = "0.3"\n'
+    l_old = '[[package]]\nname = "dogdns"\nversion = "0.8.4"\n'
+    l_new = '[[package]]\nname = "dogdns"\nversion = "0.8.5"\n'
+    l_dep = '[[package]]\nname = "dogdns"\nversion = "0.8.5"\n[[package]]\nname = "x"\nversion = "1"\n'
+    assert version_only_change(c_old, c_new, l_old, l_new)
+    assert not version_only_change(c_old, c_dep, l_old, l_new)
+    assert not version_only_change(c_old, c_new, l_old, l_dep)
+    assert not version_only_change(c_old, c_old, l_old, l_old)
+
     for bad in ["master", "main", "wip", "feat/x", "feature", "feature/", "fix", "docs", "dependabot/cargo/x",
                 "Fix/x", "fix/-x", "fix/a b", "fix//x", "fix/a/b", "docs/", " fix/x", "fix/x\n", "release/1.0"]:
         assert check(bad, docs), f"{bad!r} must be rejected"
@@ -97,11 +152,11 @@ def main() -> int:
     base = sys.argv[sys.argv.index("--base") + 1] if "--base" in sys.argv else "origin/master"
     try:
         branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
-        paths = changed_since(base) if branch.startswith("docs/") else None
+        paths, bump_only = changed_since(base) if branch.startswith("docs/") else (None, True)
     except RuntimeError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    problems = check(branch, paths)
+    problems = check(branch, paths, version_bump=bump_only)
     for p in problems:
         print(p, file=sys.stderr)
     return 1 if problems else 0

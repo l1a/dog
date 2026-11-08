@@ -1,28 +1,39 @@
 name: Claude Code Review
 
+# Runs automatically on same-repo pull requests and on manual `workflow_dispatch`:
+#     gh workflow run claude-code-review.yml -f pr=<number>
+#
+# Read-only by design: this job reviews, it does not push. Anything that needs to change
+# the repository goes through `claude.yml`, which is triggered deliberately by an @claude
+# mention and has the write permissions to match.
+
 on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
   workflow_dispatch:
     inputs:
       pr:
         description: "Pull request number to review"
         required: true
-        type: number
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   claude-review:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
       issues: read
       id-token: write
-      actions: read
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -31,30 +42,59 @@ jobs:
         uses: anthropics/claude-code-action@c0949c50a78c1ec8ce2647db36629b870e715d0c # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ inputs.pr || github.event.pull_request.number }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ inputs.pr || github.event.pull_request.number }}'
+          allowed_bots: 'dependabot[bot]'
+          use_sticky_comment: true
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Use `gh pr diff ${{ inputs.pr || github.event.pull_request.number }}` and `gh pr view ${{ inputs.pr || github.event.pull_request.number }}` to inspect the pull request, and `gh pr comment ${{ inputs.pr || github.event.pull_request.number }} --body ...` to post your review. Be constructive and helpful in your feedback.
-
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
-
-      - name: Write review to step summary
-        if: always() && steps.claude-review.outputs.execution_file != ''
+      - name: Report whether the review actually ran
+        if: always()
         env:
-          EXEC_FILE: ${{ steps.claude-review.outputs.execution_file }}
-          PR_NUM: ${{ inputs.pr || github.event.pull_request.number }}
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
         run: |
-          echo "## Claude Code Review — PR #${PR_NUM}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          jq -r '
-            ([.[] | select(.type == "result") | .result // empty] | last) //
-            ([.[] | select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text] | join("\n\n"))
-          ' "$EXEC_FILE" >> "$GITHUB_STEP_SUMMARY"
+          set -uo pipefail
+          {
+            echo "### Claude Code Review"
+            echo
+            if [ -z "${EXECUTION_FILE:-}" ] || [ ! -f "${EXECUTION_FILE:-}" ]; then
+              echo "**The review did NOT run.** No execution output was produced."
+              echo
+              echo "The usual cause is the action's workflow-validation check, which skips"
+              echo "with a \`success\` conclusion when this workflow file differs from the"
+              echo "copy on the default branch — so any PR editing it gets no review."
+              echo "Search the job log for \`Workflow validation failed\` to confirm."
+            else
+              python3 - "$EXECUTION_FILE" <<'PYEOF'
+          import json, sys
+
+          try:
+              data = json.load(open(sys.argv[1]))
+          except Exception as e:
+              print(f"**The review ran**, but its output could not be parsed ({e}).")
+              raise SystemExit(0)
+
+          candidates = data if isinstance(data, list) else [data]
+          result = next(
+              (c for c in reversed(candidates)
+               if isinstance(c, dict) and "num_turns" in c),
+              None,
+          )
+
+          if result is None:
+              print("**The review ran**, but produced no recognisable result record.")
+              raise SystemExit(0)
+
+          turns = result.get("num_turns", "?")
+          cost = result.get("total_cost_usd")
+          errored = result.get("is_error", False)
+
+          status = "completed with an error" if errored else "completed"
+          cost_text = f", ${cost:.2f}" if isinstance(cost, (int, float)) else ""
+          print(f"**The review ran** and {status} — {turns} turns{cost_text}.")
+          print()
+          print("Findings, if any, appear as comments on the pull request.")
+          print("No comment means the review found nothing to raise.")
+          PYEOF
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"

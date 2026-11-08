@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "dogdns"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "anstyle",
  "clap",
