@@ -45,6 +45,7 @@ jobs:
           python3 scripts/gate_conformance.py --self-test
           python3 scripts/gate_conformance.py Justfile
           python3 scripts/render_packaging.py --self-test
+          python3 scripts/publish_packaging.py --self-test
           python3 scripts/copr_check.py --self-test
           python3 scripts/copr_check.py
           python3 scripts/version_gate.py --self-test
