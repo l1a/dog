@@ -185,9 +185,14 @@ copr-check:
     @"{{PY}}" scripts/copr_check.py --self-test
     @"{{PY}}" scripts/copr_check.py
 
+# print packaging/copr/dog.spec rendered for Cargo.toml's version (offline)
+copr-render:
+    @"{{PY}}" scripts/render_packaging.py --target copr
+
 # run the self-tests of every project script, and check the project description agrees everywhere
 scripts-check:
     @"{{PY}}" scripts/render_packaging.py --self-test
+    @"{{PY}}" scripts/publish_packaging.py --self-test
     @"{{PY}}" scripts/copr_check.py --self-test
     @"{{PY}}" scripts/version_gate.py --self-test
     @"{{PY}}" scripts/ci_gate.py --self-test
@@ -210,23 +215,106 @@ wip-check:
     @"{{PY}}" scripts/reset_wip.py --self-test
     @"{{PY}}" scripts/reset_wip.py --check-endings
 
+# run security audit on dependencies (requires cargo-audit)
+audit:
+    cargo audit
+
 # set the GitHub About box and topics from packaging/metadata.toml (public: shows the change and asks first)
 github-metadata:
     "{{PY}}" scripts/github_metadata.py --apply
 
-# publish a released version to the AUR (public and immediate: you must type the version to confirm)
-aur-publish version:
+# dry-run publish check for crates.io (no upload; also catches yanked dependencies)
+publish-check:
+    cargo publish --dry-run --locked
+
+# publish a released tag across crates.io, AUR, and Homebrew (refuses unless HEAD is v<VERSION>)
+publish:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VER=$("{{PY}}" scripts/render_packaging.py --print-version)
+    TAG="v${VER}"
+
+    if [ "${PUBLISH_ANY_REF:-0}" != "1" ]; then
+        TAG_SHA=$(git rev-parse -q --verify "refs/tags/${TAG}^{commit}" || true)
+        if [ -z "$TAG_SHA" ]; then
+            echo "error: Cargo.toml is ${VER} but tag ${TAG} does not exist in this clone. Tag and push ${TAG} first (or set PUBLISH_ANY_REF=1)." >&2
+            exit 1
+        fi
+        HEAD_SHA=$(git rev-parse HEAD)
+        if [ "$HEAD_SHA" != "$TAG_SHA" ]; then
+            echo "error: HEAD (${HEAD_SHA}) is not ${TAG} (${TAG_SHA}). Check out ${TAG} or master at the tag first." >&2
+            exit 1
+        fi
+        echo "==> HEAD is ${TAG} (${HEAD_SHA})"
+    else
+        echo "==> PUBLISH_ANY_REF=1: skipping the HEAD-is-the-tag check"
+    fi
+
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "error: working tree has uncommitted changes. Commit or discard them first." >&2
+        exit 1
+    fi
+
+    set +e
+    "{{PY}}" -c '
+    import sys, urllib.error, urllib.request
+    url = f"https://crates.io/api/v1/crates/dogdns/{sys.argv[1]}"
+    req = urllib.request.Request(url, headers={"User-Agent": "dog-publish-check"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            sys.exit(0 if r.status == 200 else 1)
+    except urllib.error.HTTPError as e:
+        sys.exit(2 if e.code == 404 else 1)
+    ' "$VER"
+    CRATES_RC=$?
+    set -e
+    if [ "$CRATES_RC" -eq 0 ]; then
+        echo "==> dogdns ${VER} is already on crates.io — skipping cargo publish"
+    elif [ "$CRATES_RC" -eq 2 ]; then
+        echo "==> Running cargo publish --dry-run --locked..."
+        cargo publish --dry-run --locked
+        if [ -n "${PUBLISH_CONFIRM:-}" ]; then
+            CONFIRM="$PUBLISH_CONFIRM"
+            echo "Publish dogdns ${VER} to crates.io? [y/N] $CONFIRM   (answered by PUBLISH_CONFIRM)"
+        elif [ -t 0 ]; then
+            echo -n "Publish dogdns ${VER} to crates.io? [y/N] "
+            read -r CONFIRM
+        else
+            echo -n "Publish dogdns ${VER} to crates.io? [y/N] "
+            read -r -t 10 CONFIRM || CONFIRM=""
+            echo "$CONFIRM"
+            [ -n "$CONFIRM" ] || { echo "error: no terminal to confirm on; set PUBLISH_CONFIRM=y" >&2; exit 1; }
+        fi
+        case "$CONFIRM" in
+            y|Y|yes|YES|"$VER") ;;
+            *) echo "aborted crates.io publish"; exit 1 ;;
+        esac
+        echo "==> Publishing dogdns ${VER} to crates.io..."
+        cargo publish --locked
+    else
+        echo "error: failed to query crates.io for dogdns ${VER}" >&2
+        exit 1
+    fi
+
+    echo "==> Publishing AUR package..."
+    just aur-publish "${VER}"
+    echo "==> Publishing Homebrew formula..."
+    just brew-publish "${VER}"
+    echo "==> crates.io, AUR, and Homebrew done. COPR rebuilds from ${TAG} via copr.yml."
+
+# publish a released version to the AUR (defaults to Cargo.toml version; public and immediate)
+aur-publish version="":
     @"{{PY}}" scripts/publish_packaging.py aur "{{version}}"
 
 # alias for aur-publish
-publish-aur version: (aur-publish version)
+publish-aur version="": (aur-publish version)
 
-# publish a released version to the Homebrew tap (public and immediate: you must type the version to confirm)
-brew-publish version:
+# publish a released version to the Homebrew tap (defaults to Cargo.toml version; public and immediate)
+brew-publish version="":
     @"{{PY}}" scripts/publish_packaging.py brew "{{version}}"
 
 # alias for brew-publish
-publish-brew version: (brew-publish version)
+publish-brew version="": (brew-publish version)
 
 # run a real DNS query against 8.8.8.8 with a freshly built dog (needs the network); what CI's smoke test runs
 @smoke-dns:
