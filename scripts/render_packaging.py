@@ -229,9 +229,12 @@ def main() -> int:
         elif args.print_version:
             print(cargo_version((REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8")))
         elif args.target:
-            if not args.version:
+            version = args.version
+            if not version and args.target == "copr":
+                version = cargo_version((REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+            if not version:
                 raise RenderError("--version is required with --target")
-            text = render(args.target, args.version, args.sha256)
+            text = render(args.target, version, args.sha256)
             if args.out:
                 Path(args.out).write_text(text, encoding="utf-8")
             else:

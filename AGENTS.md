@@ -200,17 +200,16 @@ something a user sees, in which case it follows the questions above.
   `scripts/render_packaging.py` fills from `Cargo.toml` at build time. A stale version cannot be committed when no version is
   committed. The renderer treats a substitution that matches nothing, and a sentinel that survives rendering, as hard errors;
   `just packaging-check` (`--self-test`) proves each guard can fail.
-- **COPR** builds from the exact commit/tag ref with `make_srpm` (`.copr/Makefile`), using an archive of the checkout as `Source0`, so a PR can build its own SRPM. `copr.yml` rebuilds on a `v[0-9]*` tag (`copr-cli buildscm --commit "$REF"`), fails on `l1a/dog` if the `COPR_*` secrets are absent, and skips cleanly on forks. `scripts/copr_check.py` enforces these invariants. The committed `man/dog.1` is installed directly.
+- **COPR** builds from the exact commit/tag ref with `make_srpm` (`.copr/Makefile`), using an archive of the checkout as `Source0`, so a PR can build its own SRPM. `copr.yml` rebuilds on a `v[0-9]*` tag (`copr-cli buildscm --commit "$REF"`), fails on `l1a/dog` if the `COPR_*` secrets are absent, and skips cleanly on forks. `scripts/copr_check.py` enforces these invariants; `just copr-render` previews the rendered spec offline. The committed `man/dog.1` is installed directly.
 - **Test the RPM for real, not just the SRPM.** `packaging.yml` runs `make -f .copr/Makefile srpm`, `dnf builddep`, then
   `rpmbuild --rebuild` (which runs `%build`, `%install` and `%check`), checks the file list, installs it (`rpm -ivh --nodeps --nosignature`, since Fedora 45 / RPM 6 requires a signature by default and a local `rpmbuild` is unsigned) and runs `dog --version`.
   The same sequence runs locally in `podman run registry.fedoraproject.org/fedora:latest`. Install `git` before anything calls it;
   the Makefile installs it itself under mock.
 - **`--locked` is load-bearing** in the spec: COPR builds with network access and no vendoring, so `Cargo.lock` is the only thing
   pinning what is built to what CI tested.
-- **AUR (`dogdns`) and Homebrew (`l1a/homebrew-dog`)** use the same templates (`packaging/aur/PKGBUILD.in`, `SRCINFO.in`,
-  `packaging/homebrew/dog.rb`) and are published by `scripts/publish_packaging.py` (`just aur-publish X` / `just publish-aur X`, `just brew-publish X` / `just publish-brew X`).
-  It downloads the tag tarball, computes the sha256 from what it got, renders, shows the diff, and requires typing the version
-  before it pushes. It is tested against local bare repositories (`--remote`, `--tarball`). **`.SRCINFO` is never hand-written**:
+- **crates.io, AUR (`dogdns`) and Homebrew (`l1a/homebrew-dog`)** are published together once the tag exists via `just publish` (refuses unless `HEAD` matches `v<VERSION>` and tree is clean; `just publish-check` runs `cargo publish --dry-run --locked`). AUR and Homebrew use the same templates (`packaging/aur/PKGBUILD.in`, `SRCINFO.in`, `packaging/homebrew/dog.rb`) and are published by `scripts/publish_packaging.py` (`just aur-publish [X]` / `just publish-aur [X]`, `just brew-publish [X]` / `just publish-brew [X]`, defaulting to `Cargo.toml`'s version).
+  It downloads the tag tarball, computes the sha256 from what it got, renders, shows the diff, and requires confirming with the version or `y` (`AUR_CONFIRM=y`, `BREW_CONFIRM=y`, or `PUBLISH_CONFIRM=y` non-interactively)
+  before it pushes. It is tested against local bare repositories (`--remote`, `--tarball`, run by `scripts/publish_packaging.py --self-test` in `just scripts-check`). **`.SRCINFO` is never hand-written**:
   `SRCINFO.in` is derived from `makepkg --printsrcinfo`, and `packaging.yml` fails if the rendered pair disagrees with makepkg.
 - **Arch needs `options=('!lto')`.** makepkg's default LTO flags make the C code that `ring` compiles through the `cc` crate into
   GCC LTO bytecode, which Rust's linker cannot read, so the build fails at the link with `undefined symbol: ring_core_*`. Found by
@@ -241,11 +240,11 @@ Per `~/AGENTS.md` §6 (**Sandbox Bypass & Sandbox Learning Loop**), always run t
 - **`just` shebang and network/container recipes (`#!/usr/bin/env bash` recipes fail in the sandbox with `/run/user/1000/just: Read-only file system (os error 30)`):**
   - `just pr` / `PR_CONFIRM=y just pr`, `PR_CONFIRM=y just open-pr --fill`, `just merge-pr`, `just prune-branches`, `just install-tag`
   - `just smoke-dns` / `scripts/smoke_dns.sh` (queries live DNS at `8.8.8.8` and `dns.google`)
-  - `just github-metadata`, `just aur-publish` / `just publish-aur`, `just brew-publish` / `just publish-brew`
+  - `just github-metadata`, `just aur-publish` / `just publish-aur`, `just brew-publish` / `just publish-brew`, `just publish`, `just publish-check`, `just audit`
   - `just update-deps`, `just coverage-docker`
 - **Cargo network operations:** `cargo update` (use `cargo --config net.retry=0 update` with `BypassSandbox: true`), `cargo fetch`, `cargo publish`, `cargo audit`, and the first build after `Cargo.lock` updates a crate not yet cached in `~/.cargo/registry/cache/`.
 - **Commands that DO work in the sandbox (`BypassSandbox: false`):**
-  - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
+  - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just copr-render`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
   - Direct `python3 scripts/*.py --self-test` calls
   - Read-only `git` commands: `git status`, `git diff`, `git log`, `git show`, `git rev-parse`, `git for-each-ref`
 - **Repo-Local Sandbox Learning Loop:**

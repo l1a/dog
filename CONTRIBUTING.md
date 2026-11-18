@@ -92,8 +92,8 @@ in a Fedora container, so a spec that parses but cannot build fails on the PR an
 1. **A release needs no bump of its own.** The last PR to merge already bumped the version, so `master` is at the version
    to release. Check with `python3 scripts/version_gate.py` (no `--base`): it should report a bump past the previous tag.
    Plain `just version-check` compares with `origin/master`, so on `master` itself it always fails.
-   **Then check nothing in `Cargo.lock` is yanked:** `cargo publish --dry-run --locked` warns `package ... is yanked`.
-   CI does not catch a yank: `cargo audit` reports it only as a warning. If one is, `cargo update -p <crate>` in a PR first
+   **Then check nothing in `Cargo.lock` is yanked:** `just publish-check` (`cargo publish --dry-run --locked`) warns `package ... is yanked`.
+   CI does not catch a yank: `cargo audit` (or `just audit`) reports it only as a warning. If one is, `cargo update -p <crate>` in a PR first
    (v0.7.16 exists because tokio 1.54.0 was yanked two days after it was locked).
 2. Tag the tip of `master` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`. After the tag, `master` stays
    at that version until the next PR bumps it.
@@ -102,10 +102,8 @@ in a Fedora container, so a spec that parses but cannot build fails on the PR an
    page, shell completions, `LICENSE` and `README.md`. It publishes them with a `SHA256SUMS` file.
 4. A tag with a suffix, such as `vX.Y.Z-rc.1`, is published as a pre-release. Only publish packages for a final tag.
 5. Only the 20 most recent releases are kept; older releases and their tags are deleted.
-6. **COPR** rebuilds by itself when the tag is pushed (`copr.yml`; the tag must be the tip of `master`).
-7. **AUR and Homebrew** are published by hand once the release exists, because they are public and immediate:
-   `just publish-aur X.Y.Z` and `just publish-brew X.Y.Z`. Each shows the diff and asks you to type the version.
-8. **crates.io** is also by hand and cannot be undone. Check with `cargo publish --dry-run`, then `cargo publish`.
+6. **COPR** rebuilds by itself when the tag is pushed (`copr.yml`; the tag must be the tip of `master`). `just copr-render` previews the rendered RPM spec offline.
+7. **crates.io, AUR and Homebrew** are published once the tag and GitHub Release exist with `just publish`, which verifies `HEAD` matches tag `vX.Y.Z` and the working tree is clean, checks crates.io (`cargo publish --dry-run --locked` / `cargo publish --locked`), and runs `just aur-publish` and `just brew-publish`. Individual channels remain available via `just publish-aur [X.Y.Z]` and `just publish-brew [X.Y.Z]` (version defaults to `Cargo.toml`); each shows the diff and requires confirming with the version or `y` (`AUR_CONFIRM=y`, `BREW_CONFIRM=y`, or `PUBLISH_CONFIRM=y` for non-interactive runs).
 
 To exercise the pipeline without publishing, run the `Release` workflow manually (`workflow_dispatch`). It builds
 everything and leaves the archives in the run's artifacts, but skips the publish and prune jobs.
