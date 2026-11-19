@@ -173,8 +173,8 @@ lint: clippy
 check: fmt-check clippy standard-check man-check packaging-check scripts-check text-check wip-check
     @echo "All checks passed."
 
-# check the packaging templates, COPR invariants, and metadata agreement
-packaging-check: render-check copr-check metadata-check
+# check the packaging templates, COPR invariants, Scoop template, and metadata agreement
+packaging-check: render-check copr-check scoop-check metadata-check
 
 # run the packaging renderer's self-test
 render-check:
@@ -185,6 +185,11 @@ copr-check:
     @"{{PY}}" scripts/copr_check.py --self-test
     @"{{PY}}" scripts/copr_check.py
 
+# verify packaging/scoop/dog.json is still a template recording no version (offline)
+scoop-check:
+    @"{{PY}}" scripts/scoop_check.py --self-test
+    @"{{PY}}" scripts/scoop_check.py
+
 # print packaging/copr/dog.spec rendered for Cargo.toml's version (offline)
 copr-render:
     @"{{PY}}" scripts/render_packaging.py --target copr
@@ -194,6 +199,7 @@ scripts-check:
     @"{{PY}}" scripts/render_packaging.py --self-test
     @"{{PY}}" scripts/publish_packaging.py --self-test
     @"{{PY}}" scripts/copr_check.py --self-test
+    @"{{PY}}" scripts/scoop_check.py --self-test
     @"{{PY}}" scripts/version_gate.py --self-test
     @"{{PY}}" scripts/ci_gate.py --self-test
     @"{{PY}}" scripts/branch_gate.py --self-test
@@ -227,7 +233,7 @@ github-metadata:
 publish-check:
     cargo publish --dry-run --locked
 
-# publish a released tag across crates.io, AUR, and Homebrew (refuses unless HEAD is v<VERSION>)
+# publish a released tag across crates.io, AUR, Homebrew, and Scoop (refuses unless HEAD is v<VERSION>)
 publish:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -300,7 +306,9 @@ publish:
     just aur-publish "${VER}"
     echo "==> Publishing Homebrew formula..."
     just brew-publish "${VER}"
-    echo "==> crates.io, AUR, and Homebrew done. COPR rebuilds from ${TAG} via copr.yml."
+    echo "==> Publishing Scoop manifest..."
+    just scoop-publish "${VER}"
+    echo "==> crates.io, AUR, Homebrew, and Scoop done. COPR rebuilds from ${TAG} via copr.yml."
 
 # publish a released version to the AUR (defaults to Cargo.toml version; public and immediate)
 aur-publish version="":
@@ -315,6 +323,13 @@ brew-publish version="":
 
 # alias for brew-publish
 publish-brew version="": (brew-publish version)
+
+# publish a released version to the Scoop bucket (defaults to Cargo.toml version; public and immediate)
+scoop-publish version="":
+    @"{{PY}}" scripts/publish_packaging.py scoop "{{version}}"
+
+# alias for scoop-publish
+publish-scoop version="": (scoop-publish version)
 
 # run a real DNS query against 8.8.8.8 with a freshly built dog (needs the network); what CI's smoke test runs
 @smoke-dns:

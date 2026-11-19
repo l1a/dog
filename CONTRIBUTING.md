@@ -52,7 +52,7 @@ already bumped it.
 ## Changing the project description
 
 The description is written once, in `packaging/metadata.toml`. Edit it there, then update the copies it names: `Cargo.toml`, the
-PKGBUILD and `.SRCINFO`, the RPM spec, the Homebrew formula and the README tagline. `just metadata-check` (part of `just scripts-check`
+PKGBUILD and `.SRCINFO`, the RPM spec, the Homebrew formula, the Scoop manifest and the README tagline. `just metadata-check` (part of `just scripts-check`
 and of `just pr`) tells you exactly which copy disagrees. The GitHub About box and topics are pushed by hand with
 `just github-metadata`, which shows the change and asks first.
 
@@ -83,9 +83,9 @@ add lints, so a PR that did not touch the affected code can still start failing 
 
 ## Packaging
 
-`packaging/` holds the templates for COPR, the AUR (`dogdns`) and Homebrew (`l1a/homebrew-dog`). They record no version: the version comes from
-`Cargo.toml` when a package is built. Run `just packaging-check` after touching them. The `Packaging` workflow builds a real RPM
-in a Fedora container, so a spec that parses but cannot build fails on the PR and not on the first release.
+`packaging/` holds the templates for COPR, the AUR (`dogdns`), Homebrew (`l1a/homebrew-dog`), and Windows Scoop (`l1a/scoop-dog`). They record no version: the version comes from
+`Cargo.toml` when a package is built or published. Run `just packaging-check` after touching them. The `Packaging` workflow builds a real RPM
+in a Fedora container, audits and builds the Homebrew formula, and installs the Scoop manifest on Windows, so a template that parses but cannot build or install fails on the PR and not on the first release.
 
 ## Releases
 
@@ -103,7 +103,7 @@ in a Fedora container, so a spec that parses but cannot build fails on the PR an
 4. A tag with a suffix, such as `vX.Y.Z-rc.1`, is published as a pre-release. Only publish packages for a final tag.
 5. Only the 20 most recent releases are kept; older releases and their tags are deleted.
 6. **COPR** rebuilds by itself when the tag is pushed (`copr.yml`; the tag must be the tip of `master`). `just copr-render` previews the rendered RPM spec offline.
-7. **crates.io, AUR and Homebrew** are published once the tag and GitHub Release exist with `just publish`, which verifies `HEAD` matches tag `vX.Y.Z` and the working tree is clean, checks crates.io (`cargo publish --dry-run --locked` / `cargo publish --locked`), and runs `just aur-publish` and `just brew-publish`. Individual channels remain available via `just publish-aur [X.Y.Z]` and `just publish-brew [X.Y.Z]` (version defaults to `Cargo.toml`); each shows the diff and requires confirming with the version or `y` (`AUR_CONFIRM=y`, `BREW_CONFIRM=y`, or `PUBLISH_CONFIRM=y` for non-interactive runs).
+7. **crates.io, AUR, Homebrew and Scoop** are published once the tag and GitHub Release exist with `just publish`, which verifies `HEAD` matches tag `vX.Y.Z` and the working tree is clean, checks crates.io (`cargo publish --dry-run --locked` / `cargo publish --locked`), and runs `just aur-publish`, `just brew-publish`, and `just scoop-publish`. Individual channels remain available via `just publish-aur [X.Y.Z]`, `just publish-brew [X.Y.Z]`, and `just publish-scoop [X.Y.Z]` (version defaults to `Cargo.toml`); each shows the diff and requires confirming with the version or `y` (`AUR_CONFIRM=y`, `BREW_CONFIRM=y`, `SCOOP_CONFIRM=y`, or `PUBLISH_CONFIRM=y` for non-interactive runs).
 
 To exercise the pipeline without publishing, run the `Release` workflow manually (`workflow_dispatch`). It builds
 everything and leaves the archives in the run's artifacts, but skips the publish and prune jobs.

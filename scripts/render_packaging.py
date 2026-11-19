@@ -53,10 +53,12 @@ TARGETS = {
     "aur-pkgbuild": ("packaging/aur/PKGBUILD.in", ("@VERSION@", "@SHA256@")),
     "aur-srcinfo": ("packaging/aur/SRCINFO.in", ("@VERSION@", "@SHA256@")),
     "brew": ("packaging/homebrew/dog.rb", ("@VERSION@", "@SHA256@")),
+    "scoop": ("packaging/scoop/dog.json", ("@VERSION@", "@SHA256_X86_64@", "@SHA256_ARM64@")),
 }
 
-# The placeholder digest the self-test renders with. It is never a real checksum.
+# The placeholder digests the self-test renders with. They are never real checksums.
 FAKE_SHA256 = "0" * 64
+FAKE_SHA256_ARM = "1" * 64
 
 
 class RenderError(Exception):
@@ -122,6 +124,9 @@ def render(
     sha256: str | None = None,
     root: Path = REPO_ROOT,
     now: float | None = None,
+    *,
+    sha256_x86_64: str | None = None,
+    sha256_arm64: str | None = None,
 ) -> str:
     if target not in TARGETS:
         raise RenderError(f"unknown target {target!r}; choose from {', '.join(sorted(TARGETS))}")
@@ -131,11 +136,20 @@ def render(
     if "@CHANGELOG@" in sentinels:
         values["@CHANGELOG@"] = changelog_entry(version, now)
     if "@SHA256@" in sentinels:
+        if sha256_x86_64 is not None or sha256_arm64 is not None:
+            raise RenderError(f"{path} takes --sha256 only, not per-architecture checksums")
         if sha256 is None:
             raise RenderError(f"{path} needs --sha256 (the digest of the tarball actually downloaded)")
         values["@SHA256@"] = validate_sha256(sha256)
-    elif sha256 is not None:
-        raise RenderError(f"{path} takes no checksum, but --sha256 was given")
+    elif "@SHA256_X86_64@" in sentinels:
+        if sha256 is not None:
+            raise RenderError(f"{path} needs --sha256-x86-64 and --sha256-arm64, not --sha256")
+        if sha256_x86_64 is None or sha256_arm64 is None:
+            raise RenderError(f"{path} needs --sha256-x86-64 and --sha256-arm64")
+        values["@SHA256_X86_64@"] = validate_sha256(sha256_x86_64)
+        values["@SHA256_ARM64@"] = validate_sha256(sha256_arm64)
+    elif sha256 is not None or sha256_x86_64 is not None or sha256_arm64 is not None:
+        raise RenderError(f"{path} takes no checksum, but a sha256 flag was given")
     return substitute(template, values, path)
 
 
@@ -183,13 +197,19 @@ def self_test() -> None:
         else:
             raise AssertionError(f"validate_sha256 accepted {bad!r}")
     # A checksum is required where the template has a sentinel for it, and refused where not.
-    for args in (("aur-pkgbuild", "1.2.3", None), ("copr", "1.2.3", FAKE_SHA256)):
+    for fn in (
+        lambda: render("aur-pkgbuild", "1.2.3", None),
+        lambda: render("copr", "1.2.3", FAKE_SHA256),
+        lambda: render("scoop", "1.2.3", FAKE_SHA256),
+        lambda: render("scoop", "1.2.3", sha256_x86_64=FAKE_SHA256),
+        lambda: render("brew", "1.2.3", FAKE_SHA256, sha256_x86_64=FAKE_SHA256),
+    ):
         try:
-            render(*args)
+            fn()
         except RenderError:
             pass
         else:
-            raise AssertionError(f"render accepted {args!r}")
+            raise AssertionError("render accepted mismatched checksum arguments")
 
     # 2026-10-05 was a Monday; rpm rejects a changelog whose weekday does not match the date.
     assert changelog_entry("1.2.3", now=1791201600.0).startswith("* Mon Oct 05 2026 ")
@@ -200,7 +220,16 @@ def self_test() -> None:
         for s in sentinels:
             assert s in text, f"{path} lost {s}"
         # No release may be recorded in a template: a literal version here would drift.
-        rendered = render(target, "0.0.1", FAKE_SHA256 if "@SHA256@" in sentinels else None)
+        if "@SHA256_X86_64@" in sentinels:
+            rendered = render(
+                target,
+                "0.0.1",
+                sha256_x86_64=FAKE_SHA256,
+                sha256_arm64=FAKE_SHA256_ARM,
+            )
+            assert FAKE_SHA256 in rendered and FAKE_SHA256_ARM in rendered
+        else:
+            rendered = render(target, "0.0.1", FAKE_SHA256 if "@SHA256@" in sentinels else None)
         assert "0.0.1" in rendered and not SENTINEL_RE.search(rendered)
         # A sentinel written inside a comment is rewritten along with the real ones, so the
         # published file's own header ends up quoting a version and a digest instead of
@@ -209,7 +238,12 @@ def self_test() -> None:
             if line.lstrip().startswith("#") and SENTINEL_RE.search(line):
                 raise AssertionError(f"{path}:{n}: a sentinel inside a comment would be rewritten: {line.strip()}")
         # A checksum must never be committed in a template either.
-        assert not SHA256_RE.search(text.replace("@SHA256@", "")), f"{path} records a checksum"
+        cleaned = (
+            text.replace("@SHA256@", "")
+            .replace("@SHA256_X86_64@", "")
+            .replace("@SHA256_ARM64@", "")
+        )
+        assert not SHA256_RE.search(cleaned), f"{path} records a checksum"
     print("self-test passed")
 
 
@@ -219,6 +253,8 @@ def main() -> int:
     ap.add_argument("--target", choices=sorted(TARGETS))
     ap.add_argument("--version")
     ap.add_argument("--sha256", help="digest of the source tarball, for targets that pin one")
+    ap.add_argument("--sha256-x86-64", help="digest of the x86_64 Windows archive (scoop only)")
+    ap.add_argument("--sha256-arm64", help="digest of the arm64 Windows archive (scoop only)")
     ap.add_argument("--out", help="write here instead of stdout")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
@@ -234,7 +270,13 @@ def main() -> int:
                 version = cargo_version((REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8"))
             if not version:
                 raise RenderError("--version is required with --target")
-            text = render(args.target, version, args.sha256)
+            text = render(
+                args.target,
+                version,
+                args.sha256,
+                sha256_x86_64=args.sha256_x86_64,
+                sha256_arm64=args.sha256_arm64,
+            )
             if args.out:
                 Path(args.out).write_text(text, encoding="utf-8")
             else:

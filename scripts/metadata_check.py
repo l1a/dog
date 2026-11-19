@@ -29,6 +29,7 @@ PUSHED from the source (scripts/github_metadata.py, .github/workflows/copr.yml).
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import tomllib
@@ -43,6 +44,7 @@ FILES = {
     "srcinfo": "packaging/aur/SRCINFO.in",
     "spec": "packaging/copr/dog.spec",
     "brew": "packaging/homebrew/dog.rb",
+    "scoop": "packaging/scoop/dog.json",
     "readme": "README.md",
 }
 
@@ -180,6 +182,13 @@ def check(root: Path = REPO_ROOT, overrides: dict[str, str] | None = None) -> li
     value, err = grab("Homebrew license", r'^\s*license "(.*)"$', texts["brew"]); found += err
     pairs.append(("Homebrew license", value, licence))
     pairs.append(("spec %description", spec_description(texts["spec"]), long_desc))
+    try:
+        scoop = json.loads(texts["scoop"])
+    except json.JSONDecodeError as e:
+        found.append(f"Scoop manifest has invalid JSON: {e}")
+    else:
+        pairs.append(("Scoop description", scoop.get("description"), summary))
+        pairs.append(("Scoop license", scoop.get("license"), licence))
     for label, have, want in pairs:
         if have is not None and have != want:
             found.append(f"{label} is {have!r}; metadata.toml says {want!r}")
@@ -218,11 +227,13 @@ def self_test() -> None:
     must_fail("spec %description", corrupt("packaging/copr/dog.spec", "knows 35 record types", "knows 12 record types"), "spec %description")
     must_fail("Homebrew desc", corrupt("packaging/homebrew/dog.rb", f'desc "{summary}"', 'desc "Command-line DNS client"'), "Homebrew desc")
     must_fail("Homebrew license", corrupt("packaging/homebrew/dog.rb", 'license "GPL-3.0-or-later"', 'license "MIT"'), "Homebrew license")
+    must_fail("Scoop description", corrupt("packaging/scoop/dog.json", f'"description": "{summary}"', '"description": "Command-line DNS client"'), "Scoop description")
+    must_fail("Scoop license", corrupt("packaging/scoop/dog.json", '"license": "GPL-3.0-or-later"', '"license": "MIT"'), "Scoop license")
     must_fail("README tagline", corrupt("README.md", "friendlier.", "friendlier!"), "tagline")
 
     # The SOURCE changing while the copies stay put must be caught everywhere at once.
     drift = corrupt(META, f'summary = "{summary}"', 'summary = "Command-line DNS client for people"')
-    for needle in ("PKGBUILD pkgdesc", ".SRCINFO pkgdesc", "spec Summary"):
+    for needle in ("PKGBUILD pkgdesc", ".SRCINFO pkgdesc", "spec Summary", "Scoop description"):
         must_fail("source drift", drift, needle)
 
     # Style rules on the source text.

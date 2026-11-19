@@ -95,7 +95,7 @@ dog supports the following record types: `A`, `AAAA`, `ANAME`, `ANY`, `AXFR`, `C
 
 You can install a package, download a pre-compiled binary, or compile dog from source. The installed command is always `dog`.
 
-The package names differ because `dog` was already taken on some of these services. The package is `dogdns` on crates.io and the AUR, and `dog` on COPR and Homebrew.
+The package names differ because `dog` was already taken on some of these services. The package is `dogdns` on crates.io and the AUR, and `dog` on COPR, Homebrew and Scoop.
 
 ### Packages
 
@@ -115,6 +115,11 @@ Packages are published with each release.
 - **Homebrew** (macOS and Linux), from this project's tap:
 
       $ brew install l1a/dog/dog
+
+- **Windows** ([Scoop](https://scoop.sh), x86_64 and ARM64), from this project's bucket:
+
+      $ scoop bucket add l1a https://github.com/l1a/scoop-dog
+      $ scoop install dog
 
 - **crates.io**, built from source (this installs the `dog` binary):
 

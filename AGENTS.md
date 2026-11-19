@@ -193,11 +193,11 @@ something a user sees, in which case it follows the questions above.
 ## Packaging
 
 - **Names:** the crate (crates.io) and AUR package are `dogdns`; the COPR project is `kentobias/dog` (RPM name `dog`); the
-  Homebrew tap is `l1a/homebrew-dog`. The installed binary is `dog` everywhere (`[[bin]] name = "dog"`). The crate is not
+  Homebrew tap is `l1a/homebrew-dog`; the Windows Scoop bucket is `l1a/scoop-dog`. The installed binary is `dog` everywhere (`[[bin]] name = "dog"`). The crate is not
   called `dog` because that name on crates.io is an abandoned Datadog client, so `cargo install dog` fetched the wrong crate.
   Nothing in `src/` reads the package name, so renaming the crate cannot change behaviour.
-- **Templates record nothing about a release.** `packaging/copr/dog.spec` carries `@VERSION@` and `@CHANGELOG@` sentinels that
-  `scripts/render_packaging.py` fills from `Cargo.toml` at build time. A stale version cannot be committed when no version is
+- **Templates record nothing about a release.** `packaging/copr/dog.spec`, `packaging/aur/PKGBUILD.in`, `packaging/aur/SRCINFO.in`, `packaging/homebrew/dog.rb`, and `packaging/scoop/dog.json` carry `@VERSION@`, `@CHANGELOG@`, `@SHA256@`, `@SHA256_X86_64@`, and `@SHA256_ARM64@` sentinels that
+  `scripts/render_packaging.py` fills from `Cargo.toml` at build or publish time. A stale version cannot be committed when no version is
   committed. The renderer treats a substitution that matches nothing, and a sentinel that survives rendering, as hard errors;
   `just packaging-check` (`--self-test`) proves each guard can fail.
 - **COPR** builds from the exact commit/tag ref with `make_srpm` (`.copr/Makefile`), using an archive of the checkout as `Source0`, so a PR can build its own SRPM. `copr.yml` rebuilds on a `v[0-9]*` tag (`copr-cli buildscm --commit "$REF"`), fails on `l1a/dog` if the `COPR_*` secrets are absent, and skips cleanly on forks. `scripts/copr_check.py` enforces these invariants; `just copr-render` previews the rendered spec offline. The committed `man/dog.1` is installed directly.
@@ -207,10 +207,11 @@ something a user sees, in which case it follows the questions above.
   the Makefile installs it itself under mock.
 - **`--locked` is load-bearing** in the spec: COPR builds with network access and no vendoring, so `Cargo.lock` is the only thing
   pinning what is built to what CI tested.
-- **crates.io, AUR (`dogdns`) and Homebrew (`l1a/homebrew-dog`)** are published together once the tag exists via `just publish` (refuses unless `HEAD` matches `v<VERSION>` and tree is clean; `just publish-check` runs `cargo publish --dry-run --locked`). AUR and Homebrew use the same templates (`packaging/aur/PKGBUILD.in`, `SRCINFO.in`, `packaging/homebrew/dog.rb`) and are published by `scripts/publish_packaging.py` (`just aur-publish [X]` / `just publish-aur [X]`, `just brew-publish [X]` / `just publish-brew [X]`, defaulting to `Cargo.toml`'s version).
-  It downloads the tag tarball, computes the sha256 from what it got, renders, shows the diff, and requires confirming with the version or `y` (`AUR_CONFIRM=y`, `BREW_CONFIRM=y`, or `PUBLISH_CONFIRM=y` non-interactively)
+- **crates.io, AUR (`dogdns`), Homebrew (`l1a/homebrew-dog`), and Windows Scoop (`l1a/scoop-dog`)** are published together once the tag exists via `just publish` (refuses unless `HEAD` matches `v<VERSION>` and tree is clean; `just publish-check` runs `cargo publish --dry-run --locked`). AUR, Homebrew, and Scoop use templates (`packaging/aur/PKGBUILD.in`, `SRCINFO.in`, `packaging/homebrew/dog.rb`, `packaging/scoop/dog.json`) and are published by `scripts/publish_packaging.py` (`just aur-publish [X]` / `just publish-aur [X]`, `just brew-publish [X]` / `just publish-brew [X]`, `just scoop-publish [X]` / `just publish-scoop [X]`, defaulting to `Cargo.toml`'s version).
+  It downloads the tag tarball (or the two Windows release `.zip` archives for Scoop), computes the sha256 from what it got, renders, shows the diff, and requires confirming with the version or `y` (`AUR_CONFIRM=y`, `BREW_CONFIRM=y`, `SCOOP_CONFIRM=y`, or `PUBLISH_CONFIRM=y` non-interactively)
   before it pushes. It is tested against local bare repositories (`--remote`, `--tarball`, run by `scripts/publish_packaging.py --self-test` in `just scripts-check`). **`.SRCINFO` is never hand-written**:
   `SRCINFO.in` is derived from `makepkg --printsrcinfo`, and `packaging.yml` fails if the rendered pair disagrees with makepkg.
+- **Never run `just install` (`cargo install --path .`) or `just install-tag` (`cargo install --git ... --tag vX.Y.Z`) during or after a release:** Both replace the crates.io registry entry (`dogdns vX.Y.Z:`) in `~/.cargo/.crates.toml` and `~/.cargo/.crates2.json` with a local path or pinned git tag (preventing `cargo install-update` / `topgrade` / `cgu` from ever updating the crate when a future release is published from another machine) and overwrite chezmoi-managed completion/man-page files in `$HOME`. Update the local binary from crates.io (`cargo install-update` or `cargo install --locked dogdns`) instead.
 - **Arch needs `options=('!lto')`.** makepkg's default LTO flags make the C code that `ring` compiles through the `cc` crate into
   GCC LTO bytecode, which Rust's linker cannot read, so the build fails at the link with `undefined symbol: ring_core_*`. Found by
   really building the PKGBUILD in an `archlinux:base-devel` container; parsing it would not have caught it. Fedora's flags differ,
@@ -229,6 +230,7 @@ something a user sees, in which case it follows the questions above.
   (2026-10-26, Homebrew/brew#24352), `brew audit` no longer implicitly trusts a fully-qualified third-party formula** — only
   `install`/`reinstall`/`upgrade` do — so the job runs `brew trust --formula l1a/test/dog` before audit. Prefer that over
   trusting the whole throwaway tap. PR #43 failed on audit until this was added.
+- **Scoop is verified by `packaging.yml`'s `scoop` job on `windows-latest`.** Note that `dog --version` emits a trailing blank line, so in PowerShell `$verOut = & dog --version` captures a 2-element `Object[]` (`@("dog ● command-line DNS client vX.Y.Z", "")`), on which `$verOut -notmatch ...` acts as an array filter returning `@("")` (truthy) rather than a boolean; always flatten with `(& dog --version) -join " "` before `-match`/`-notmatch`.
 - Packaging is **not** a required check, so `packaging.yml`, `metadata.yml` and `security.yml` use `paths:` filters on `push` and `pull_request`.
 
 ## Sandbox Bypass (`BypassSandbox: true`) & Sandbox Learning Loop
@@ -240,11 +242,11 @@ Per `~/AGENTS.md` §6 (**Sandbox Bypass & Sandbox Learning Loop**), always run t
 - **`just` shebang and network/container recipes (`#!/usr/bin/env bash` recipes fail in the sandbox with `/run/user/1000/just: Read-only file system (os error 30)`):**
   - `just pr` / `PR_CONFIRM=y just pr`, `PR_CONFIRM=y just open-pr --fill`, `just merge-pr`, `just prune-branches`, `just install-tag`
   - `just smoke-dns` / `scripts/smoke_dns.sh` (queries live DNS at `8.8.8.8` and `dns.google`)
-  - `just github-metadata`, `just aur-publish` / `just publish-aur`, `just brew-publish` / `just publish-brew`, `just publish`, `just publish-check`, `just audit`
+  - `just github-metadata`, `just aur-publish` / `just publish-aur`, `just brew-publish` / `just publish-brew`, `just scoop-publish` / `just publish-scoop`, `just publish`, `just publish-check`, `just audit`
   - `just update-deps`, `just coverage-docker`
 - **Cargo network operations:** `cargo update` (use `cargo --config net.retry=0 update` with `BypassSandbox: true`), `cargo fetch`, `cargo publish`, `cargo audit`, and the first build after `Cargo.lock` updates a crate not yet cached in `~/.cargo/registry/cache/`.
 - **Commands that DO work in the sandbox (`BypassSandbox: false`):**
-  - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just copr-render`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
+  - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just scoop-check`, `just copr-render`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
   - Direct `python3 scripts/*.py --self-test` calls
   - Read-only `git` commands: `git status`, `git diff`, `git log`, `git show`, `git rev-parse`, `git for-each-ref`
 - **Repo-Local Sandbox Learning Loop:**
