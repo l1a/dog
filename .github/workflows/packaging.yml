@@ -54,6 +54,8 @@ jobs:
           python3 scripts/publish_packaging.py --self-test
           python3 scripts/copr_check.py --self-test
           python3 scripts/copr_check.py
+          python3 scripts/scoop_check.py --self-test
+          python3 scripts/scoop_check.py
 
   copr:
     name: COPR build (Fedora)
@@ -181,3 +183,81 @@ jobs:
 
       - name: Test
         run: brew test l1a/test/dog
+
+  scoop:
+    name: Scoop manifest (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Scoop manifest template is valid (offline)
+        shell: bash
+        run: python scripts/scoop_check.py --self-test && python scripts/scoop_check.py
+
+      - name: Render the Scoop manifest for the last released tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$TAG" ]; then
+            echo "::error::no tags in this checkout — cannot render a Scoop manifest to install"
+            exit 1
+          fi
+          VER="${TAG#v}"
+          BASE_URL="https://github.com/l1a/dog/releases/download/${TAG}"
+          echo "last released tag: $TAG"
+          WORK="$(mktemp -d)"
+          curl -sfL --retry 3 -o "$WORK/dog-${TAG}-windows-x86_64.zip" "$BASE_URL/dog-${TAG}-windows-x86_64.zip" \
+            || { echo "::error::cannot fetch $BASE_URL/dog-${TAG}-windows-x86_64.zip"; exit 1; }
+          curl -sfL --retry 3 -o "$WORK/dog-${TAG}-windows-aarch64.zip" "$BASE_URL/dog-${TAG}-windows-aarch64.zip" \
+            || { echo "::error::cannot fetch $BASE_URL/dog-${TAG}-windows-aarch64.zip"; exit 1; }
+          SHA_X64=$(python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest(),end='')" "$WORK/dog-${TAG}-windows-x86_64.zip")
+          SHA_ARM=$(python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest(),end='')" "$WORK/dog-${TAG}-windows-aarch64.zip")
+          echo "computed x86_64 sha256: $SHA_X64"
+          echo "computed arm64  sha256: $SHA_ARM"
+          python scripts/render_packaging.py --target scoop --version "$VER" \
+            --sha256-x86-64 "$SHA_X64" --sha256-arm64 "$SHA_ARM" \
+            --out "$RUNNER_TEMP/dog.json"
+          python - "$RUNNER_TEMP/dog.json" "$VER" "$SHA_X64" "$SHA_ARM" <<'PY'
+          import json, pathlib, sys
+          path, ver, sha_x64, sha_arm = sys.argv[1:]
+          data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+          assert data["version"] == ver, f"version {data['version']!r} != {ver!r}"
+          assert data["architecture"]["64bit"]["hash"] == sha_x64
+          assert data["architecture"]["arm64"]["hash"] == sha_arm
+          assert data["architecture"]["64bit"]["url"].endswith(f"/v{ver}/dog-v{ver}-windows-x86_64.zip")
+          assert data["architecture"]["arm64"]["url"].endswith(f"/v{ver}/dog-v{ver}-windows-aarch64.zip")
+          assert data["architecture"]["64bit"]["extract_dir"] == f"dog-v{ver}-windows-x86_64"
+          assert data["architecture"]["arm64"]["extract_dir"] == f"dog-v{ver}-windows-aarch64"
+          PY
+          echo "RENDERED_VER=$VER" >> "$GITHUB_ENV"
+          rm -rf "$WORK"
+          echo "render verified against the real $TAG Windows release archives"
+
+      - name: Install via Scoop from a staged local bucket and verify binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+            $env:PATH = "$HOME\scoop\shims;$env:PATH"
+          }
+          $bucketDir = Join-Path $HOME "scoop\buckets\local-test\bucket"
+          New-Item -ItemType Directory -Force -Path $bucketDir | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\dog.json" (Join-Path $bucketDir "dog.json")
+          scoop install local-test/dog
+          if ($LASTEXITCODE -ne 0) {
+            throw "scoop install local-test/dog failed with exit code $LASTEXITCODE"
+          }
+          $verOut = (& dog --version) -join " "
+          if ($LASTEXITCODE -ne 0) {
+            throw "dog --version failed with exit code $LASTEXITCODE"
+          }
+          Write-Host "dog --version: $verOut"
+          if ($verOut -notmatch [regex]::Escape($env:RENDERED_VER)) {
+            throw "Expected dog --version to contain $($env:RENDERED_VER), got: $verOut"
+          }

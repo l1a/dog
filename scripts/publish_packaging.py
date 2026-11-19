@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Publish a released version to the AUR or the Homebrew tap.
+"""Publish a released version to the AUR, the Homebrew tap, or the Scoop bucket.
 
-    publish_packaging.py aur  [X.Y.Z]   # ssh://aur@aur.archlinux.org/dogdns.git
-    publish_packaging.py brew [X.Y.Z]   # git@github.com:l1a/homebrew-dog.git
+    publish_packaging.py aur   [X.Y.Z]   # ssh://aur@aur.archlinux.org/dogdns.git
+    publish_packaging.py brew  [X.Y.Z]   # git@github.com:l1a/homebrew-dog.git
+    publish_packaging.py scoop [X.Y.Z]   # git@github.com:l1a/scoop-dog.git
     publish_packaging.py brew 1.2.3 --dry-run
     publish_packaging.py --self-test
 
 Publishing is PUBLIC AND IMMEDIATE (an AUR push is what users install from), so this:
 
-  * downloads the tag tarball and computes the checksum from the bytes it actually got, never
-    from a value typed or committed, so the checksum cannot disagree with the tarball;
+  * downloads the tag tarball (or Windows release archives for Scoop) and computes the
+    checksum from the bytes it actually got, never from a value typed or committed, so the
+    checksum cannot disagree with the release artifact;
   * renders from the templates with scripts/render_packaging.py, whose guards refuse a
     substitution that matches nothing or a sentinel that survives;
   * shows the exact diff and requires confirming with the version or 'y' (or AUR_CONFIRM=y /
-    BREW_CONFIRM=y / PUBLISH_CONFIRM=y) before it pushes;
+    BREW_CONFIRM=y / SCOOP_CONFIRM=y / PUBLISH_CONFIRM=y) before it pushes;
   * does nothing if the remote already carries exactly what it would push.
 
 The tag must already exist on GitHub, and the release workflow must have passed: the workflow
@@ -41,6 +43,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import render_packaging as rp  # noqa: E402
 
 TARBALL_URL = "https://github.com/l1a/dog/archive/refs/tags/v{version}.tar.gz"
+SCOOP_X64_URL = "https://github.com/l1a/dog/releases/download/v{version}/dog-v{version}-windows-x86_64.zip"
+SCOOP_ARM64_URL = "https://github.com/l1a/dog/releases/download/v{version}/dog-v{version}-windows-aarch64.zip"
 
 # channel -> (default remote, branch, {target in the render script: path in the remote}, message)
 CHANNELS = {
@@ -54,6 +58,12 @@ CHANNELS = {
         "git@github.com:l1a/homebrew-dog.git",
         "main",
         {"brew": "Formula/dog.rb"},
+        "dog {version}",
+    ),
+    "scoop": (
+        "git@github.com:l1a/scoop-dog.git",
+        "main",
+        {"scoop": "bucket/dog.json"},
         "dog {version}",
     ),
 }
@@ -78,9 +88,16 @@ def git(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProces
     return subprocess.run(["git", *args], cwd=cwd, check=check, text=True, capture_output=True)
 
 
+CONFIRM_VARS = {
+    "aur": "AUR_CONFIRM",
+    "brew": "BREW_CONFIRM",
+    "scoop": "SCOOP_CONFIRM",
+}
+
+
 def confirm_publish(channel: str, version: str) -> bool:
     """Ask for explicit confirmation via env var or terminal input."""
-    confirm_name = "AUR_CONFIRM" if channel == "aur" else "BREW_CONFIRM"
+    confirm_name = CONFIRM_VARS[channel]
     for name in (confirm_name, "PUBLISH_CONFIRM"):
         val = os.environ.get(name)
         if val is not None and val != "":
@@ -116,6 +133,7 @@ def self_test() -> None:
         for k in (
             "AUR_CONFIRM",
             "BREW_CONFIRM",
+            "SCOOP_CONFIRM",
             "PUBLISH_CONFIRM",
             "GIT_AUTHOR_NAME",
             "GIT_AUTHOR_EMAIL",
@@ -124,7 +142,7 @@ def self_test() -> None:
         )
     }
     try:
-        for k in ("AUR_CONFIRM", "BREW_CONFIRM", "PUBLISH_CONFIRM"):
+        for k in ("AUR_CONFIRM", "BREW_CONFIRM", "SCOOP_CONFIRM", "PUBLISH_CONFIRM"):
             os.environ.pop(k, None)
         os.environ.setdefault("GIT_AUTHOR_NAME", "Test User")
         os.environ.setdefault("GIT_AUTHOR_EMAIL", "test@example.com")
@@ -141,6 +159,7 @@ def self_test() -> None:
             for channel, branch, expected_files in (
                 ("aur", "master", ("PKGBUILD", ".SRCINFO")),
                 ("brew", "main", ("Formula/dog.rb",)),
+                ("scoop", "main", ("bucket/dog.json",)),
             ):
                 remote = root / f"{channel}.git"
                 subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
@@ -230,11 +249,30 @@ def main(argv: list[str] | None = None) -> int:
         if not raw_version or not raw_version.strip():
             raw_version = rp.cargo_version((rp.REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8"))
         version = rp.validate_version(raw_version.strip().lstrip("v"))
-        source = args.tarball or TARBALL_URL.format(version=version)
-        data = fetch(source)
-        sha = hashlib.sha256(data).hexdigest()
-        print(f"tarball: {source}\n  {len(data)} bytes, sha256 {sha}")
-        rendered = {path: rp.render(target, version, sha) for target, path in files.items()}
+        if args.channel == "scoop":
+            source_x64 = args.tarball or SCOOP_X64_URL.format(version=version)
+            source_arm = args.tarball or SCOOP_ARM64_URL.format(version=version)
+            data_x64 = fetch(source_x64)
+            data_arm = fetch(source_arm)
+            sha_x64 = hashlib.sha256(data_x64).hexdigest()
+            sha_arm = hashlib.sha256(data_arm).hexdigest()
+            print(f"x86_64 archive: {source_x64}\n  {len(data_x64)} bytes, sha256 {sha_x64}")
+            print(f"arm64  archive: {source_arm}\n  {len(data_arm)} bytes, sha256 {sha_arm}")
+            rendered = {
+                path: rp.render(
+                    target,
+                    version,
+                    sha256_x86_64=sha_x64,
+                    sha256_arm64=sha_arm,
+                )
+                for target, path in files.items()
+            }
+        else:
+            source = args.tarball or TARBALL_URL.format(version=version)
+            data = fetch(source)
+            sha = hashlib.sha256(data).hexdigest()
+            print(f"tarball: {source}\n  {len(data)} bytes, sha256 {sha}")
+            rendered = {path: rp.render(target, version, sha) for target, path in files.items()}
     except rp.RenderError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
