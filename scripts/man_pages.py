@@ -135,6 +135,10 @@ def _git_env(repo_root: Path, *, isolate_config: bool = False) -> dict[str, str]
         and not k.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
     }
     env["GIT_TERMINAL_PROMPT"] = "0"
+    # Cursor (and similar harnesses) inject GIT_CONFIG_COUNT without the
+    # matching GIT_CONFIG_KEY_*/VALUE_* pairs; after we strip those keys above,
+    # a leftover COUNT makes every `git` call fail with "missing config key".
+    env.pop("GIT_CONFIG_COUNT", None)
     if isolate_config:
         for k in list(env):
             if k.startswith(("GIT_AUTHOR_", "GIT_COMMITTER_")):
