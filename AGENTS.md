@@ -244,7 +244,7 @@ Per `~/AGENTS.md` §6 (**Sandbox Bypass & Sandbox Learning Loop**), always run t
   - `just smoke-dns` / `scripts/smoke_dns.sh` (queries live DNS at `8.8.8.8` and `dns.google`)
   - `just github-metadata`, `just aur-publish` / `just publish-aur`, `just brew-publish` / `just publish-brew`, `just scoop-publish` / `just publish-scoop`, `just publish`, `just publish-check`, `just audit`
   - `just update-deps`, `just coverage-docker`
-- **Cargo network operations:** `cargo update` (use `cargo --config net.retry=0 update` with `BypassSandbox: true`), `cargo fetch`, `cargo publish`, `cargo audit`, and the first build after `Cargo.lock` updates a crate not yet cached in `~/.cargo/registry/cache/`.
+- **Cargo network and registry-unpack operations:** `cargo update` (use `cargo --config net.retry=0 update` with `BypassSandbox: true`), `cargo fetch`, `cargo publish`, `cargo audit`, and the first `cargo check`/`build`/`clippy`/`test` whenever a locked crate is missing from `~/.cargo/registry/cache/` **or** not yet unpacked in `~/.cargo/registry/src/` (unpacking into `~/.cargo/registry/src/` fails inside `bwrap` with `Read-only file system (os error 30)`).
 - **Commands that DO work in the sandbox (`BypassSandbox: false`):**
   - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just scoop-check`, `just copr-render`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
   - Direct `python3 scripts/*.py --self-test` calls
