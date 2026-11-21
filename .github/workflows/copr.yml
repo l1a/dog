@@ -68,9 +68,14 @@ jobs:
         if: env.skip != 'true'
         run: |
           set -euo pipefail
-          copr-cli modify dog \
+          copr-cli modify \
+            --chroot fedora-44-x86_64 \
+            --chroot fedora-44-aarch64 \
+            --chroot fedora-45-x86_64 \
+            --chroot fedora-45-aarch64 \
             --description "$(cat packaging/copr/project-description.md)" \
-            --instructions "$(cat packaging/copr/project-instructions.md)"
+            --instructions "$(cat packaging/copr/project-instructions.md)" \
+            kentobias/dog
 
       - name: Trigger and wait for COPR build from exact ref
         if: env.skip != 'true'
@@ -82,4 +87,5 @@ jobs:
             --clone-url https://github.com/l1a/dog.git \
             --commit "$REF" \
             --method make_srpm \
+            --enable-net on \
             kentobias/dog
