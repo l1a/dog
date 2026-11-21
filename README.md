@@ -101,7 +101,7 @@ The package names differ because `dog` was already taken on some of these servic
 
 Packages are published with each release.
 
-- **Fedora** ([COPR](https://copr.fedorainfracloud.org/coprs/kentobias/dog/), Fedora 43 and 44, x86_64 and aarch64):
+- **Fedora** ([COPR](https://copr.fedorainfracloud.org/coprs/kentobias/dog/), Fedora 44 and 45, x86_64 and aarch64):
 
       $ sudo dnf copr enable kentobias/dog
       $ sudo dnf install dog
