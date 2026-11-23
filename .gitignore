@@ -5,3 +5,4 @@ fuzz-*.log
 /.copr-build
 /.copr-sources
 __pycache__/
+.claude/settings.local.json

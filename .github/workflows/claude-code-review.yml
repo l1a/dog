@@ -6,6 +6,29 @@ name: Claude Code Review
 # Read-only by design: this job reviews, it does not push. Anything that needs to change
 # the repository goes through `claude.yml`, which is triggered deliberately by an @claude
 # mention and has the write permissions to match.
+#
+# The review prompt is `.claude/commands/ci-code-review.md`, a copy of the `code-review`
+# plugin's command (anthropics/claude-plugins-official@c905cd8), edited so it no longer
+# moves when upstream `main` does. See AGENTS.md (Source control and CI) for each change and why:
+#   - automated PRs (Dependabot) are reviewed, not skipped as "does not need review";
+#   - a clean review posts nothing, because `just merge-pr` treats any Claude comment
+#     as a finding;
+#   - dispatched runs, which have no inline-comment tool, post nothing: their findings
+#     are in the job summary (the report step prints the session's final message);
+#   - a review is skipped only when Claude already reviewed the PR's CURRENT head
+#     commit, so a fix pushed after findings is reviewed again;
+#   - it reads the PR from files this workflow prepares, not through `gh`.
+#
+# Comments are posted with the Claude GitHub App token the action obtains through OIDC
+# (`id-token: write`), not with GITHUB_TOKEN, so `pull-requests: read` is enough here.
+#
+# The session reads untrusted text (PR titles, bodies, diffs, Dependabot release notes)
+# while that token can write to this repository and to any other the App is installed
+# on. So the session gets NO shell, no `gh` and no network, and no config from the PR:
+# the workspace root is the base branch, the PR's head is checked out under
+# `.ci-review/head/` as data, and a plain step fetches its metadata and diff into
+# `.ci-review/`. Its only write is the inline-comment MCP tool, which the action binds
+# to this PR. Narrower designs were tried and each leaked (see AGENTS.md, Source control and CI).
 
 on:
   pull_request:
@@ -13,7 +36,7 @@ on:
   workflow_dispatch:
     inputs:
       pr:
-        description: "Pull request number to review"
+        description: 'Pull request number to review'
         required: true
         type: string
 
@@ -31,22 +54,182 @@ jobs:
       issues: read
       id-token: write
 
+    env:
+      # Denied in the review session, and the ONE place this list is written: the guard
+      # step and `claude_args` both read it. A bare tool name removes that tool from the
+      # session entirely. It must cover every allow rule in the committed
+      # `.claude/settings.json`, because project settings load here if present (e.g. a local
+      # `git clone *` allow rule would run a command via `--upload-pack`). A deny wins over
+      # an allow; the guard step fails the job if an allow is ever added without a matching deny.
+      REVIEW_DENY: 'Bash,WebFetch,WebSearch,Edit,Write,NotebookEdit,Read(//tmp/**),Read(//proc/**),Read(//etc/**),Read(//sys/**),Read(//dev/**),Read(//var/**),Read(//run/**),Read(//root/**),Read(//home/runner/.*),Read(//home/runner/.*/**),Read(~/.*),Read(~/.*/**),Read(//home/runner/work/_actions/**),Read(//home/runner/work/_tool/**),Read(//home/runner/work/_PipelineMapping/**),Read(./.git/**),Read(.ci-review/head/.git/**),Read(**/.git/**),Grep(//tmp/**),Grep(//proc/**),Grep(//etc/**),Grep(//sys/**),Grep(//dev/**),Grep(//var/**),Grep(//run/**),Grep(//root/**),Grep(//home/runner/.*),Grep(//home/runner/.*/**),Grep(~/.*),Grep(~/.*/**),Grep(//home/runner/work/_actions/**),Grep(//home/runner/work/_tool/**),Grep(//home/runner/work/_PipelineMapping/**),Grep(./.git/**),Grep(.ci-review/head/.git/**),Grep(**/.git/**),Glob(//tmp/**),Glob(//proc/**),Glob(//etc/**),Glob(//sys/**),Glob(//dev/**),Glob(//var/**),Glob(//run/**),Glob(//root/**),Glob(//home/runner/.*),Glob(//home/runner/.*/**),Glob(~/.*),Glob(~/.*/**),Glob(//home/runner/work/_actions/**),Glob(//home/runner/work/_tool/**),Glob(//home/runner/work/_PipelineMapping/**),Glob(./.git/**),Glob(.ci-review/head/.git/**),Glob(**/.git/**)'
+      # Disable background tasks/subagents: `claude-code-action`'s `run-claude-sdk.ts`
+      # breaks out of the SDK stream on the first `result` message. When the main
+      # session backgrounds Step 4's parallel reviewers and ends a turn waiting for
+      # them (observed in live verification: "Three reviewers are still running."), that
+      # emits a `result` message and kills the session with `conclusion: success` before
+      # Steps 5-9 run. Setting this env var disables explicit `run_in_background`,
+      # `backgroundLaunchByDefault`, and auto-backgrounding while keeping synchronous
+      # parallel foreground subagent calls working (see AGENTS.md, Source control and CI).
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+
     steps:
-      - name: Checkout repository
+      # The PR number goes into the prompt, so it must be a bare number and nothing else:
+      # a dispatch input is free text and could otherwise carry instructions of its own.
+      # Read through env, never interpolated into the script.
+      - name: Resolve pull request number
+        id: pr
+        env:
+          PR_NUMBER: ${{ inputs.pr || github.event.pull_request.number }}
+        run: |
+          # A glob over the whole string, not `grep -x`: grep matches line by line, so
+          # "58<newline>anything" would pass.
+          case "$PR_NUMBER" in
+            '' | 0* | *[!0-9]*)
+              echo "::error::Pull request number must be a positive integer, got: '$PR_NUMBER'"
+              exit 1
+              ;;
+          esac
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      # The workspace root is the BASE branch, on every event: the CLI loads project config
+      # (`.claude/`, `CLAUDE.md`, `.mcp.json`, this review command) only from its working
+      # directory, so that config must never come from the PR. The action restores it from
+      # the base itself on PR events but not on `workflow_dispatch`, where checking out the
+      # head would have run a fork's `.claude/` hooks with the tokens present.
+      # Asked of the API, not read from the event: a dispatch has no pull_request payload,
+      # and the base is what the trusted checkout below must be. Forks are refused here,
+      # before anything is checked out, because the job's `if` skips them on
+      # `pull_request` only.
+      - name: Resolve base branch and refuse fork PRs
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json baseRefName,isCrossRepository > meta.json
+          python3 - <<'PY'
+          import json, os, sys
+          m = json.load(open("meta.json"))
+          if m["isCrossRepository"] is not False:
+              print(f"::error::PR #{os.environ['PR_NUMBER']} is from a fork; this workflow reviews same-repository PRs only")
+              raise SystemExit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"base={m['baseRefName']}\n")
+          PY
+          rm -f meta.json
+
+      # `persist-credentials: false`: actions/checkout v7 stores GITHUB_TOKEN under
+      # `$RUNNER_TEMP` and links it via `includeIf.gitdir:...` in `.git/config`, which
+      # `claude-code-action@f3b070c8` (`replaceCheckoutCredentials`) does not clear (it only
+      # unsets v6 `include.path`). This job needs no checkout credentials after checkout.
+      - name: Checkout base branch (trusted config)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ steps.meta.outputs.base }}
           fetch-depth: 1
+          persist-credentials: false
+
+      # The PR's head, as data only: nothing under `.ci-review/` is loaded as config. No
+      # credentials are left in it for the Read tool to find.
+      - name: Checkout pull request head (data)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/pull/${{ steps.pr.outputs.number }}/head
+          path: .ci-review/head
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Claude Code loads a `CLAUDE.md` as instructions when it reads a file in that
+      # directory, wherever it is (tested: a nested canary instruction was obeyed), and
+      # `.claude/` and `.mcp.json` are config. `AGENTS.md` is not loaded by the CLI tested
+      # (2.1.330) but is removed too: this repo's `CLAUDE.md` points to it, and loading it is
+      # a feature the CLI is adding. The PR's head is data, so none of them may exist in it. Their trusted versions are the base
+      # branch's, at the workspace root, and a PR's change to one is still in `pr.diff`.
+      - name: Remove config-like files from the PR head
+        run: |
+          find .ci-review/head -name .git -prune -o \
+            \( -iname 'CLAUDE.md' -o -iname 'CLAUDE.local.md' -o -iname 'AGENTS.md' \
+               -o -name '.claude' -o -name '.claude.json' -o -name '.mcp.json' \) \
+            -prune -exec rm -rf {} +
+          left=$(find .ci-review/head -name .git -prune -o \
+            \( -iname 'CLAUDE.md' -o -iname 'CLAUDE.local.md' -o -iname 'AGENTS.md' \
+               -o -name '.claude' -o -name '.claude.json' -o -name '.mcp.json' \) -print | wc -l)
+          if [ "$left" != "0" ]; then
+            echo "::error::$left config-like paths remain in the PR head"
+            exit 1
+          fi
+          echo "PR head holds no CLAUDE.md, AGENTS.md, .claude or .mcp.json"
+
+      # Everything the review needs from GitHub, fetched by this step rather than by the
+      # model, so nothing the PR's text says can steer what is read.
+      - name: Fetch pull request data for the review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json number,title,body,state,isDraft,author,headRefOid,baseRefName,url,files,reviews \
+            > .ci-review/pr.json
+          gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" > .ci-review/pr.diff
+          head=$(python3 -c 'import json; print(json.load(open(".ci-review/pr.json"))["headRefOid"])')
+          checkout=$(git -C .ci-review/head rev-parse HEAD)
+          if [ "$checkout" != "$head" ]; then
+            echo "::error::checked out $checkout, but the PR head is $head (pushed meanwhile?)"
+            exit 1
+          fi
+          echo "fetched PR #$PR_NUMBER at $head: $(wc -l < .ci-review/pr.diff) diff lines"
+
+      # Fail closed: a project allow rule the session does not deny would be
+      # auto-approved for a model that reads untrusted text. This reads the root's
+      # (base branch's) settings, which are the ones the session loads.
+      - name: Check every project allow rule is denied
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          denied = set(os.environ["REVIEW_DENY"].split(","))
+          # A bare tool name in REVIEW_DENY covers every rule for that tool.
+          whole = {rule for rule in denied if "(" not in rule}
+          path = ".claude/settings.json"
+          if not os.path.exists(path):
+              print(f"{path} absent: no project allow rules")
+              raise SystemExit(0)
+          allow = json.load(open(path)).get("permissions", {}).get("allow", [])
+          missing = [rule for rule in allow
+                     if rule not in denied and rule.split("(", 1)[0] not in whole]
+          if missing:
+              for rule in missing:
+                  print(f"::error file={path}::allow rule {rule!r} is not in REVIEW_DENY")
+              raise SystemExit(1)
+          print(f"all {len(allow)} project allow rules are denied in the review session")
+          PY
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@5a856893345e332afa621934082d8c660c26d689 # v1
+        uses: anthropics/claude-code-action@f3b070c88125d33dbae5653df5f143101d4ea9dc # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ inputs.pr || github.event.pull_request.number }}'
+          # `--comment` is what makes the command post at all; without it, it prints its
+          # findings to this log and stops. The inline-comment MCP server is installed
+          # only for tools listed in `--allowedTools` here (the command's own
+          # `allowed-tools` frontmatter does not count), so it must be named. The
+          # permission mode is pinned so `--allowedTools` stays the boundary (AGENTS.md,
+          # Source control and CI). The inline-comment MCP tool is the only thing allowed,
+          # and the only write. The model is pinned: the action's default main session is
+          # Sonnet, which was seen reviewing a PR alone in one cheap pass and skipping the
+          # command's subagent steps, while Opus ran them (AGENTS.md, Source control and CI).
+          prompt: '/ci-code-review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }} --comment'
+          claude_args: >-
+            --model claude-opus-5-5
+            --permission-mode default
+            --allowedTools "mcp__github_inline_comment__create_inline_comment"
+            --disallowedTools "${{ env.REVIEW_DENY }},Read(/${{ runner.temp }}/**),Grep(/${{ runner.temp }}/**),Glob(/${{ runner.temp }}/**)"
           allowed_bots: 'dependabot[bot]'
-          use_sticky_comment: true
+          # Explicit false: agent mode posts no sticky top-level comment, and `just merge-pr`
+          # treats any `^claude` issue comment as a finding.
+          use_sticky_comment: false
 
       - name: Report whether the review actually ran
         if: always()
@@ -66,7 +249,24 @@ jobs:
               echo "Search the job log for \`Workflow validation failed\` to confirm."
             else
               python3 - "$EXECUTION_FILE" <<'PYEOF'
-          import json, sys
+          import json, re, sys
+
+          def redact_secrets(value: str) -> str:
+              # Mirror claude-code-action's redactSecrets + Authorization headers so
+              # raw execution_file output cannot disclose credentials into logs or
+              # GITHUB_STEP_SUMMARY.
+              patterns = [
+                  (r"gh[pousr]_[A-Za-z0-9]{20,}", "[REDACTED_GITHUB_TOKEN]"),
+                  (r"github_pat_[A-Za-z0-9_]{11,255}", "[REDACTED_GITHUB_TOKEN]"),
+                  (r"sk-ant-[A-Za-z0-9_-]{16,}", "[REDACTED_ANTHROPIC_KEY]"),
+                  (r"(?:AKIA|ASIA)[A-Z0-9]{16}", "[REDACTED_AWS_KEY_ID]"),
+                  (r"xox[abpsr]-[A-Za-z0-9-]{10,}", "[REDACTED_SLACK_TOKEN]"),
+                  (r"eyJ[A-Za-z0-9_-]{10,2000}\.eyJ[A-Za-z0-9_-]{10,4000}\.[A-Za-z0-9_-]{10,2000}", "[REDACTED_JWT]"),
+                  (r"(?i)(authorization\s*:\s*(?:basic|bearer)\s+)\S+", r"\1[REDACTED]"),
+              ]
+              for pat, repl in patterns:
+                  value = re.sub(pat, repl, value)
+              return value
 
           try:
               data = json.load(open(sys.argv[1]))
@@ -93,8 +293,35 @@ jobs:
           cost_text = f", ${cost:.2f}" if isinstance(cost, (int, float)) else ""
           print(f"**The review ran** and {status} — {turns} turns{cost_text}.")
           print()
-          print("Findings, if any, appear as comments on the pull request.")
-          print("No comment means the review found nothing to raise.")
+
+          # The session's own last word is the only thing that tells a full review
+          # apart from an early stop (closed, draft, already reviewed). Turn count
+          # and conclusion look the same either way: before this was printed, a
+          # month of 3-turn sessions read here as "found nothing to raise".
+          text = result.get("result")
+          if isinstance(text, str) and text.strip():
+              # The conclusion and the findings come LAST, and a dispatched run posts
+              # nothing else, so never cut the end. The job summary's limit is 1 MiB; keep
+              # well under it by dropping the START of an unusually long message.
+              text = redact_secrets(text.strip())
+              limit = 200_000
+              if len(text) > limit:
+                  text = text[-limit:]
+                  note = "… (the earlier part of a very long message is not shown)"
+              else:
+                  note = None
+              print("Final message from the review:")
+              print()
+              if note:
+                  print(f"> {note}")
+              for line in text.splitlines():
+                  print(f"> {line}" if line.strip() else ">")
+          else:
+              print("**No final message was recorded**, so whether a review happened is unknown.")
+          print()
+          print("A clean review posts nothing to the pull request; findings appear as")
+          print("inline comments. A dispatched run posts nothing at all: its findings are")
+          print("the final message above.")
           PYEOF
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"

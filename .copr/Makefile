@@ -43,15 +43,15 @@ srpm:
 	else \
 	    echo "source: tar of the working tree (no git repository here)"; \
 	    tar --exclude=.git --exclude=target --exclude=.copr-build \
-	        --exclude=.claude --exclude=__pycache__ --exclude='*.pyc' \
+	        --exclude=settings.local.json --exclude=WIP.md --exclude=__pycache__ --exclude='*.pyc' \
 	        --transform "s,^[.],dog-$$V," \
 	        -czf "$$TARBALL" .; \
 	fi; \
 	tar -tzf "$$TARBALL" > $(BUILD)/listing.txt; \
 	echo "packed $$(wc -l < $(BUILD)/listing.txt) entries as dog-$$V/"; \
-	if grep -qE "^dog-[^/]+/(target/|[.]git/|[.]claude/|[.]copr-build/)" $(BUILD)/listing.txt; then \
+	if grep -qE "^dog-[^/]+/(target/|[.]git/|([.]claude/)?settings[.]local[.]json|WIP[.]md|[.]copr-build/)" $(BUILD)/listing.txt; then \
 	    echo "error: the source archive contains files that must never ship:" >&2; \
-	    grep -E "^dog-[^/]+/(target/|[.]git/|[.]claude/|[.]copr-build/)" $(BUILD)/listing.txt >&2; \
+	    grep -E "^dog-[^/]+/(target/|[.]git/|([.]claude/)?settings[.]local[.]json|WIP[.]md|[.]copr-build/)" $(BUILD)/listing.txt >&2; \
 	    exit 1; \
 	fi; \
 	for f in Cargo.toml Cargo.lock LICENSE README.md build.rs man/dog.1 src/main.rs; do \
