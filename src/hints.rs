@@ -104,7 +104,8 @@ impl LocalHosts {
     /// Queries this set of hostnames to see if the given name, which is about
     /// to be queried for, exists within the file.
     pub fn contains(&self, hostname_in_query: &str) -> bool {
-        self.hostnames
+        !self
+            .hostnames
             .contains(&normalize_hostname(hostname_in_query))
     }
 }
