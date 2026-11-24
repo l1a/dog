@@ -1,261 +1,64 @@
-# Dog - DNS client
+# Dog — DNS Client (`AGENTS.md`)
 
-A command-line DNS client (like dig, but more user-friendly).
+A command-line DNS client (like `dig`, but friendlier) using [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns).
+**Trunk branch is `master`** (fork of `ogham/dog` — always pass `--repo l1a/dog` to `gh`, or use `just open-pr`).
 
-## Build
+---
 
-The default build may require `libssl-dev` depending on the platform due to the use of TLS for DNS-over-TLS/HTTPS. Use the vendored feature to statically link if needed (if configured in `Cargo.toml`).
+# Part 1 — Core Rules & Workflow
 
+## STEP ONE — READ IN FULL BEFORE ANYTHING ELSE
+1. **Read `~/AGENTS.md` (if present), this file (`AGENTS.md`), and `WIP.md` in full** before editing code or running commands (never `head`/`grep`-skim).
+2. **Load Tier 1 docs on trigger:** Read `docs/RELEASE.md` in full before tagging, publishing, bumping dependencies, or editing `packaging/` / `README.md` / `CONTRIBUTING.md` / CI workflows; read `~/.gemini/skills/chezmoi-manager/SKILL.md` before any `chezmoi` command.
+3. **Agent-agnostic & no agent-only memory:** Enforce rules via `Justfile` + `scripts/hooks/pre-push` rather than `.claude/`-only config. Record durable learnings in `AGENTS.md`/`docs/` in the same turn.
+
+## 1. Source Control, PRs & Attribution
+- **Branch first:** Switch to `{feature,fix,chore,docs}/<name>` **before** modifying files (`docs/` is enforced by `scripts/branch_gate.py` for root Markdown / `man/` / `.github/ISSUE_TEMPLATE/` + `Cargo.{toml,lock}` version-only bumps; changes touching `docs/RELEASE.md`, `src/`, `scripts/`, `packaging/`, or `.github/workflows/` MUST use `feature/`, `fix/`, or `chore/`).
+- **Authorization gates:** NEVER run `git commit`, `git push`, `gh pr create`, or merge without explicit authorization (`ask_question` with clickable options + prose context).
+- **Commit & attribution:** Imperative subject <= 50 chars; bare `Assisted-By: <model name>` (no suffixes/URLs, never `Co-Authored-By:`). Never include personal machine hostnames in public PRs, commits, comments, or docs.
+- **Pre-merge checks:** Inspect all 3 review channels (`reviewThreads`, `latestReviews`, top-level `comments`) plus CodeQL alerts (`just merge-pr` enforces fail-closed). Check `gh pr list --repo l1a/dog --author "app/dependabot"`, fold updates into a gated PR, and **never manually close Dependabot PRs**.
+
+## 2. `WIP.md` Handoff
+Read `WIP.md` at session start; update outside `<!-- BEGIN merge-pr state -->` / `<!-- END merge-pr state -->` when switching branches, pushing, or ending a session (`just merge-pr` runs `scripts/reset_wip.py` to update the marked state block). Keep pure LF (`just wip-check`).
+
+---
+
+# Part 2 — Project-Specific: `dog`
+
+## 1. Build & Project Structure
 ```sh
-cargo build --release
+cargo build --release   # may need libssl-dev (or vendored TLS if configured)
 ```
+- `src/main.rs` — entry point & `hickory-resolver` (`DogDnsHandle` wrapping `RetryDnsHandle<NameServerPool>` + `CachingClient`)
+- `src/options.rs` — CLI parsing
+- `src/output.rs` — JSON/Text formatting & terminal control-char sanitization
+- `src/table.rs` — columnar terminal table rendering
+- `src/hints.rs` — bounded `/etc/hosts` advisory local-hostname hints
+- **`src/stdout.rs` — ONLY allowed stdout writer.** Never use `print!` or `println!` in `src/` (Rust ignores `SIGPIPE` -> panic exit 101 on `dog ... | head`). `stdout::emit*` exits `0` quietly (`#![deny(clippy::print_stdout)]` + `tests/broken_pipe.rs`; `eprintln!` is fine).
 
-## Project structure
+## 2. Testing & Smoke Gate
+- `cargo test` (`just test`): unit tests (`options`, `main`, `output`, `table`, `hints`), `tests/broken_pipe.rs`, and offline loopback UDP/TCP DNS tests (`tests/protocol_and_security.rs`). *(Legacy `xtests/` and `dns/` wire tests are obsolete.)*
+- **`scripts/smoke_dns.sh` (`just smoke-dns`):** Live online smoke check in CI (`test` job on all matrix OSes). Queries `8.8.8.8` (`ANY`, `--json A`, `--short NS`) and `@dns.google` (UDP + DoH), checking response shapes with 3 retries. (`dog`'s `ANY` sends per-type queries, 8 responses / 27 answers for `google.com`.) `.gitattributes` pins LF on `*.sh`.
 
-The `l1a/dog` fork relies heavily on the [`hickory-resolver`](https://github.com/hickory-dns/hickory-dns) crate for all DNS parsing and networking. 
+## 3. Versioning, Pre-PR Gate & CI
+- **Every merged PR bumps `Cargo.toml` + `Cargo.lock`** (`Z` for fixes/tests/docs/CI/deps, `Y` for user-visible features or pre-1.0 breaking changes — full rules in `docs/RELEASE.md`).
+- **Man page (`man/dog.1.md` -> committed `man/dog.1`):** Run `just man` after every version bump or `man/dog.1.md` edit (`just man-check` checks worktree and `HEAD`).
+- **Pre-PR gate:** Run `just pr` (feature branch, clean tree, `version_gate.py --base origin/master`, `just check` = `fmt-check`, `clippy`, `standard-check`, `man-check`, `packaging-check`, `scripts-check`, `text-check`, `wip-check`, `cargo build --locked`, `just test`, advisory `cargo audit`, manual checklist with `PR_CONFIRM=y`), or `just open-pr` (`[positional-arguments]` + `"$@"`, passes `--repo l1a/dog --base master`). Install `pre-push` hook with `just install-hooks` (`GIT_NO_CHECK=1` skips once).
+- **CI (`ci.yml`, `CI OK` = `scripts/ci_gate.py`):** Checks every job group (`Format and Clippy`, `Test (...)`, `Man page`) explicitly for `success` — GitHub queue cancellations (~15m `timeout-minutes` excludes queue wait) report `abandoned`, not `cancelled`! Check queue reasons via `gh api repos/l1a/dog/check-runs/<id>/annotations` and rerun failed legs with `gh run rerun <id> --failed`.
+- **Hickory crate rule:** Always update `hickory-resolver`, `hickory-net`, and `hickory-proto` together (`cargo update -p hickory-resolver`).
+- **Merging (`just merge-pr`):** Verifies checks green and zero unresolved bot/review findings via GraphQL (`MERGE_ALLOW_COMMENTS=1` after verification), merges with `--merge`, and resets `WIP.md`.
+- **Packaging / Releases:** Read `docs/RELEASE.md` (and `~/.agents/docs/ops/rust-ci-packaging.md`) before touching `packaging/`, `metadata.toml`, `release.yml`, or running `just publish`.
 
-- `src/` - CLI binary source code
-  - `main.rs` - Application entry point and `hickory-resolver` orchestration (`DogDnsHandle` wrapping `RetryDnsHandle<NameServerPool>` and `CachingClient`)
-  - `options.rs` - Command-line argument parsing
-  - `output.rs` - Formatting DNS responses (JSON and Text, including terminal control-character sanitization)
-  - `table.rs` - Pretty-printing tables for terminal output
-  - `hints.rs` - Bounded `/etc/hosts` parsing for advisory local-hostname hints
-  - `stdout.rs` - The only way to write to standard output. Never use `print!` or `println!` in `src/`: Rust ignores `SIGPIPE`, so they
-    panic (exit 101) on `dog ... | head`. `stdout::emit*` exits quietly with status 0 when the reader has gone; `#![deny(clippy::print_stdout)]`
-    enforces it and `tests/broken_pipe.rs` covers it. (`eprintln!` is fine.)
+---
 
-## Testing
+## 4. Sandbox Bypass (`BypassSandbox: true`) & Learning Loop
+Per `~/AGENTS.md` §3, pass `BypassSandbox: true` on the **first** invocation of:
+- **All `gh` / `ghpub` commands** (`gh pr`, `gh run`, `gh workflow`, `gh api`, `gh issue`).
+- **All `git` write or remote commands** (`checkout`, `switch`, `branch`, `add`, `rm`, `mv`, `commit`, `merge`, `rebase`, `tag`, `fetch`, `pull`, `push`).
+- **`just` shebang, network, and container recipes:** `just pr` / `PR_CONFIRM=y just pr`, `PR_CONFIRM=y just open-pr --fill`, `just merge-pr`, `just prune-branches`, `just install-tag`, `just smoke-dns` / `scripts/smoke_dns.sh`, `just github-metadata`, `just aur-publish`/`publish-aur`, `just brew-publish`/`publish-brew`, `just scoop-publish`/`publish-scoop`, `just publish`, `just publish-check`, `just audit`, `just update-deps`, `just coverage-docker`.
+- **Cargo network/unpack ops:** `cargo --config net.retry=0 update`, `cargo fetch`, `cargo publish`, `cargo audit`, and first `cargo` build/test when a locked crate is uncached/unpacked in `~/.cargo/registry/src/`.
+- **Works inside sandbox (`BypassSandbox: false`):** `just`, `just build`, `build-release`, `build-quick`, `check`, `test`, `test-release`, `test-quick`, `fmt`, `fmt-check`, `clippy`, `lint`, `standard-check`, `man`, `man-check`, `packaging-check`, `render-check`, `copr-check`, `scoop-check`, `copr-render`, `scripts-check`, `metadata-check`, `text-check`, `wip-check`, `version-check`, `python3 scripts/*.py --self-test`, and read-only `git` (`status`, `diff`, `log`, `show`, `rev-parse`, `for-each-ref`).
+- **Repo-Local Sandbox Learning Loop:** Stage new exceptions in `WIP.md` (`## Sandbox Exceptions (staged for AGENTS.md)`) if tree must stay clean; fold into this section on the next PR.
 
-```sh
-cargo test
-```
-
-The test suite covers:
-- CLI argument parsing (`src/options.rs`), nameserver/SNI helpers (`src/main.rs`), terminal sanitization (`src/output.rs`), columnar table rendering (`src/table.rs`), and `/etc/hosts` hint parsing (`src/hints.rs`)
-- Broken-pipe handling (`tests/broken_pipe.rs`)
-- Offline loopback UDP/TCP DNS server tests (`tests/protocol_and_security.rs`) covering `-Z` protocol tweaks (`aa`, `ad`, `cd`, `do`, `bufsize`), `--txid`, `--edns`, `--class`, default UDP-to-TCP truncation fallback, `@ip:port`, terminal escape sequence sanitization, and multi-response columnar table alignment
-
-*Note: The original `dog` integration test suite (`xtests/`) and `dns/` wire format parsing tests are no longer applicable as parsing is entirely delegated to `hickory-resolver`.*
-- **CI's smoke test resolves a real name (`scripts/smoke_dns.sh`, from the `test` job on every OS in the matrix).** The unit tests are
-  offline, so this is the only check that the resolver, the sockets and the output code work together on each OS and architecture. It asks
-  8.8.8.8 directly, not the runner's resolver, for `google.com` in three output modes (text `ANY`, `--json` `A`, `--short` `NS`), then
-  names the same resolver as `@dns.google` over UDP and DoH (the OS resolves that host name), and checks
-  the shape of the answers, not their content (addresses and TXT strings change). It retries three times for a network blip and then
-  **fails the job, and so `CI OK`**: a smoke test that cannot fail proves nothing. `just smoke-dns` runs it locally. `dog`'s `ANY` is not
-  a DNS `ANY` query; it sends one query per common type (8 responses, 27 answers for google.com), so it works where a resolver would
-  answer a real `ANY` minimally. `.gitattributes` forces LF on `*.sh`, because a Windows runner may check out CRLF and bash cannot run that.
-
-## Versioning
-
-### Version numbers: X.Y.Z (MAJOR.MINOR.PATCH)
-
-`Cargo.toml`'s version is `X.Y.Z`, [semantic versioning](https://semver.org). **Bump exactly one part per PR, the highest that
-applies**, and reset every part to its right to 0.
-
-| Part | Name | Bump it when | Resets |
-|---|---|---|---|
-| **Z** | PATCH | the PR changes nothing a user can newly do and no correct invocation could notice: a bug fix, tests, docs, CI, packaging, a refactor, a dependency update | nothing |
-| **Y** | MINOR | the PR adds something a user can see and nothing breaks: a new flag or option, record type, output mode, transport, platform archive or install channel. **While X is 0, also any breaking change** | Z to 0 |
-| **X** | MAJOR | the PR breaks the public interface, **from 1.0.0 on**. While X is 0 it is reserved: the move to `1.0.0` is a deliberate decision by the maintainer to declare the interface stable, never a side effect of a PR | Y and Z to 0 |
-
-Examples: `0.7.3` + a fix is `0.7.4`. `0.7.3` + a new flag is `0.8.0`. `0.7.3` + a renamed flag is `0.8.0` (breaking, pre-1.0).
-`1.4.2` + a renamed flag is `2.0.0`. `1.4.2` + a new flag is `1.5.0`. `1.4.2` + a fix is `1.4.3`.
-
-**What "the interface" is.** `dog` is a command-line tool, so the interface is what a user or a script can depend on:
-- the flags, options and arguments, and their meaning and defaults;
-- the output: the text format and, above all, the **`--json` shape** (key names and nesting);
-- the exit codes;
-- what is installed: the `dog` binary, its man page and the shell completions.
-
-It is **not** the Rust code (the crate is a binary, not a library), the dependencies, CI, the docs, or how a package is built.
-
-**How to decide, in order, stopping at the first yes:**
-1. *Could an invocation or script that worked on the previous release now break or behave differently on purpose?* Removing or
-   renaming a flag, changing a JSON key or its structure, changing an exit code, changing a default that scripts rely on.
-   That is **breaking**: Y while X is 0, X from 1.0.0. Say `BREAKING:` in the PR title and description.
-2. *Can a user now do something they could not, or see something new?* A new flag, record type, output mode, transport, or a
-   new platform or install channel. That is **Y**.
-3. *Otherwise* (a fix, tests, docs, CI, packaging, a refactor, a dependency update): **Z**.
-
-A bug fix is a **patch even when it changes output**, if the old output was wrong: the interface did not change, the program now
-does what it already claimed to. A dependency update is a patch even when the dependency's own version jumped, unless it changes
-something a user sees, in which case it follows the questions above.
-
-**Pre-release tags.** `vX.Y.Z-rc.N` is published as a pre-release. The suffix lives only on the tag; `Cargo.toml` keeps `X.Y.Z`.
-
-### The rule
-
-- **Every merged PR bumps `Cargo.toml`'s version.** No carve-out for docs-only, test-only or CI-only changes: those are patch
-  bumps. Which part to bump is decided as above. This is the `etr`/`retch` rule (`rusticprofile` uses patch for everything until
-  1.0, which does not apply here). Commit `Cargo.lock` with the bump.
-- **A release needs no bump.** After a tag, `master` stays at the released version and the next PR bumps it. That is why the
-  packaging templates record no version: nothing has to be updated after a release, and nothing can fall behind one.
-- **The bump is checked against `master`, not only the last tag** (`scripts/version_gate.py --base origin/master`). The
-  siblings compare only with the tag, which lets two PRs bump to the same number and neither notice that the second added
-  nothing. The check is numeric per component (`0.10.0` is past `0.9.0`), and requires `Cargo.lock` to agree, because every build and
-  every packaging channel uses `--locked` and the `v0.6.0` tag shipped with a stale lockfile (`0.5.7`).
-- **Dependabot PRs are not merged.** They close by themselves once `master` carries the update. We open our own PR to resolve
-  what Dependabot found, and that PR follows this process, bump included. The same goes for any other auto-generated PR.
-- **How it is enforced** (a Justfile recipe and a hook, not agent configuration, so it binds a human, Claude and Gemini alike):
-  - `just pr` is the pre-PR gate: feature branch, clean tree, version bump, offline quality gate (`just check`, including `fmt-check`, `clippy`, `standard-check`, `man-check`, `packaging-check`, `scripts-check`, `text-check`, `wip-check`), `cargo build --locked`, `just test`, an advisory `cargo audit`, then a manual checklist answered by typing `y` or by `PR_CONFIRM=y` for a non-interactive caller (only after actually checking each item).
-  - **`just open-pr` instead of `gh pr create`**: it runs the gate, pushes if the branch has no upstream, and then runs `gh pr create --repo l1a/dog --base master "$@"`. Pass a multi-line body with `--body-file`. The arguments reach `gh` intact because the recipe uses `[positional-arguments]` and `"$@"`: `{{ARGS}}` joins them with spaces and no quoting, so a title with spaces became several words and a backtick in the body **ran as a command**.
-  - `just merge-pr` refuses to merge unless every check is `SUCCESS` or `NEUTRAL` on the PR's current head (no checks at all is not green), refuses fail-closed via GraphQL if any security/bug scanner or review bot feedback is unresolved across all three channels — unresolved inline `reviewThreads` (e.g. `Cursor Bugbot`, `Cursor Security Agent`, `CodeQL`), `CHANGES_REQUESTED` `latestReviews`, or top-level PR `comments` authored by automated review bots (`claude[bot]` / **Claude Code Review**, `cursor[bot]`, `github-advanced-security[bot]`, `codeql`) — unless `MERGE_ALLOW_COMMENTS=1` is set after inspecting and addressing every finding, merges with `--merge`, and updates `WIP.md` in place (`scripts/reset_wip.py`). Always check for open Dependabot PRs (`gh pr list --repo l1a/dog --author "app/dependabot"`) and review/address them before merging. Run `just merge-pr` only when merging has been authorised.
-  - `just install-hooks` (`scripts/install_hooks.py`) installs a `pre-push` hook that runs `just check`; skip once with `GIT_NO_CHECK=1`.
-  - **`version.yml` is an advisory CI job** (`Version bumped`). It is not a required check, so it informs without blocking, and it is skipped for `dependabot[bot]`. It has no `paths:` filter, because the rule has no carve-out.
-- **Baseline.** `0.7.0` is the first bump under this rule. It covers everything merged since `v0.6.0` without one (the `dogdns` crate, the COPR/AUR/Homebrew packaging, ARM release archives, the hickory update), as one minor bump.
-
-## Source control and CI
-
-- **Trunk on `master`.** Short-lived `{feature,fix,chore,docs}/<name>` branches (`docs/` for a change that touches only documentation; `just pr` enforces the names and that rule, via `scripts/branch_gate.py`) are PR'd into `master`. The old `dev` and `dependabot` branches are retired; Dependabot targets `master`.
-- **`just` and `just check` mirror CI locally.** `just` = build + `fmt-check` + `clippy` + tests; `just check` runs all offline quality gates (`fmt-check`, `clippy`, `standard-check`, `man-check`, `packaging-check`, `scripts-check`, `text-check`, `wip-check`) and is wired into `scripts/hooks/pre-push`. `just fmt` formats in place; `just fmt-check` checks formatting; `just lint` is an alias for `just clippy`.
-- **Man page (`man/dog.1.md` -> committed `man/dog.1`).** Rendered by `just man` (`scripts/man_pages.py --write` using `mandown`) and committed to the repository. `just man-check` verifies both worktree and `HEAD` agree with `Cargo.toml` and carry no raw mdoc macros. Run `just man` after every version bump or edit to `man/dog.1.md`.
-- **`.github/workflows/ci.yml`** runs on every PR and push to `master`: offline script/repository guards + format and clippy, tests on Linux (x86_64, aarch64, Fedora), macOS and Windows (x86_64, aarch64), and `man` (`man_pages.py --check` + `man -l man/dog.1`). All GitHub Actions across all workflows are pinned to 40-char commit SHAs.
-- **`CI OK` is `scripts/ci_gate.py`.** It asks the API what every job concluded and does not trust `needs.*.result` alone. During a GitHub Actions outage (2026-10-05) the original gate passed a run whose Format and Clippy, Man page and Fedora jobs were all *cancelled*: a job cancelled in the runner queue reports **`abandoned`**, not `cancelled`, so `contains(..., 'cancelled')` was false. The run's own conclusion was correctly `failure`; only the job-level check was wrong, and branch protection trusts the job. Every job group (`Format and Clippy`, `Test (...)`, `Man page`) must conclude `success`; anything else (`failure`, `skipped`, `cancelled`, `abandoned`, missing group, or API error) fails the gate. When `release.yml` calls `ci.yml` the caller must grant `actions: read` and `pull-requests: read`.
-- **Test a CI gate against the real failure, not against a green run.** `ci_gate.py` has a self-test with the incident data in it. A gate that has only ever seen green runs has not been shown to fail.
-- **`timeout-minutes` bounds a job that is running and hung. It does not count time spent waiting for a runner**, so it cannot
-  shorten a stall in GitHub's queue (about 15 minutes before the job is cancelled). Rerun cancelled jobs once the queue clears.
-  **A job cancelled with no runner says why in its annotations**, and githubstatus.com may not:
-  `gh api repos/l1a/dog/check-runs/<job id>/annotations`. On 2026-10-21 `macos-latest` (arm64) jobs were cancelled six times with
-  "The job was not acquired by Runner of type hosted even after multiple attempts" and "Due to capacity constraints, jobs
-  targeting macOS arm64 runners may experience longer queue times", while the status page said "All Systems Operational".
-  `ci_gate.py` correctly failed `CI OK` each time. Re-run with `gh run rerun <run id> --failed`; it keeps the jobs that passed.
-- **`security.yml`** runs `cargo audit` on dependency changes and weekly.
-- **The hickory crates must be updated together.** `hickory-resolver`, `hickory-net` and `hickory-proto` are released as a set, and a
-  newer resolver does not compile against an older net or proto even though its manifest allows the older one. Dependabot's
-  resolver-only bump (0.26.1 -> 0.26.2) failed to build on every platform with `no variant named Truncated` and similar errors.
-  Fix such a PR with `cargo update -p hickory-resolver`, which moves all three. `dependabot.yml` groups `hickory-*` first to keep
-  them in one PR; a resolver-only PR is still possible if upstream publishes the resolver before its companions, and CI catches it.
-- **`release.yml`** runs on a `v*` tag: it verifies the tag against `Cargo.toml` and `Cargo.lock`, calls `ci.yml` as a
-  reusable workflow (`workflow_call`), builds five native targets, and publishes archives plus `SHA256SUMS`. Completions
-  are generated by the built binary (`dog --completions <shell>`), so they cannot disagree with the CLI. `workflow_dispatch`
-  builds without publishing. Only the `release-*` artifacts become release assets; the `man` artifact is a build input.
-  Release steps are in `CONTRIBUTING.md`.
-- CI and release builds use `--locked`, so a version bump without a matching `Cargo.lock` fails instead of being rewritten.
-- This repo is a fork of `ogham/dog`. Always pass `--repo l1a/dog` to `gh pr create` so a PR cannot go to upstream.
-- **Hardened `Claude Code Review` workflow (`v0.9.4`, ported from `retch`/`etr`/`rusticprofile`).** Uses the local `.claude/commands/ci-code-review.md` command (Step 5 validates agents `1 to 4`), pins `claude-opus-5-5`, `--permission-mode default`, `--comment`, and `--allowedTools` scoped solely to `mcp__github_inline_comment__create_inline_comment`, sets `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (`claude-code-action`'s `run-claude-sdk.ts` exits the SDK stream on the first `result` message if subagents run in background) and `use_sticky_comment: false` (clean runs post nothing because `just merge-pr` treats any `^claude` comment as a finding), checks out the API-resolved base branch at the workspace root and the PR head under `.ci-review/head/` as data with `persist-credentials: false` on **both** checkouts (`actions/checkout@v7` uses `includeIf.gitdir:...` under `$RUNNER_TEMP`, which `claude-code-action@f3b070c8`'s `replaceCheckoutCredentials` misses because it only unsets v6 `include.path`), refuses fork PRs before checkout on every event, strips config-like files (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `.claude/`, `.claude.json`, `.mcp.json`) from `.ci-review/head/`, pre-fetches PR metadata/diff into `.ci-review/`, fails closed if `.claude/settings.json` adds an uncovered allow rule, denies non-workspace paths (`/tmp/**`, `/proc/**`, `/etc/**`, `/sys/**`, `/dev/**`, `/var/**`, `/run/**`, `/root/**`, `/home/runner/.*`, `/home/runner/.*/**`, `~/.*`, `~/.*/**`, `/home/runner/work/_actions/**`, `/home/runner/work/_tool/**`, `/home/runner/work/_PipelineMapping/**`, `/${{ runner.temp }}/**`) plus `.git/**` and `**/.git/**` across `Read`, `Grep`, and `Glob` (without denying `/home/runner/**` wholesale, which contains `$GITHUB_WORKSPACE`), omits `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` (`claude` CLI hard-requires `bubblewrap`, absent unless `allowed_non_write_users` installs it, and `Bash` is already removed), and applies `redact_secrets()` (matching `sanitizer.ts` token regexes + `Authorization` headers) before writing stdout / `$GITHUB_STEP_SUMMARY`. Updating the `anthropics/claude-code-action` pin later requires checking `action.yml`/`base-action` for permission-mode or credential-cleanup changes.
-
-## Dependencies
-
-- **Dependabot opens grouped weekly PRs** (`cargo`, and `github-actions`, with `hickory-*` kept together). **They are never merged.** We
-  open our own PR that does the same and more, because Dependabot only bumps *direct* dependencies: on 2026-10-06 it proposed 7 crates
-  while `cargo update` had **90** packages behind within our existing version ranges. Its PRs close by themselves once `master` carries
-  the update. Our PR follows the normal process, bump included (dependency updates are a **patch**).
-- **To check everything is current:** `cargo update --dry-run` (what moves within our ranges); compare each direct dependency with
-  crates.io for a newer *incompatible* version, which `cargo update` never offers (a newer `0.x` minor or a new major); and list every
-  `uses:` in the workflows against its latest release. `rust-toolchain@stable` and `setup-homebrew@main` track a rolling ref on purpose.
-- **Verify an update, do not just compile it:** build with `--locked`, run `just`, run `cargo audit`, and compare the **old and new
-  binaries** on the generated completions for all six shells, `--help`, and live queries over UDP, TCP, DNS-over-TLS, DNS-over-HTTPS and
-  `--json` (TTLs and answer order normalised: Cloudflare rotates the order of records). Two traps: a `--json` answer is a zone-file string
-  (`"example.com. 102 IN A ..."`), so the TTL sits inside the string and a `ttl` key filter misses it; and DoH takes the server's address
-  or host name (`@1.1.1.1 -H`), not a URL (exit 3). Also query a nameserver given by **host name**: that path broke unnoticed for five
-  releases (next bullet). The 2026-10-06 update changed one thing: updated
-  `clap_complete` stopped offering the literal `[free]...` placeholder as a bash completion candidate, which is a fix.
-- **A dependency's `Default` can change meaning across a version while the code still compiles.** hickory 0.24's
-  `ResolverConfig::default()` was Google Public DNS; in 0.26 it is a derived `Default` with **no** nameservers, which hickory documents
-  as "a nonfunctional resolver". The 0.26 migration (`a081a45`, shipped in v0.6.0) kept passing it to the resolver that looked up a
-  nameserver given by host name, so `dog example.com @dns.google` failed on every transport with `no connections available` until
-  v0.7.15. A host name is now resolved by the OS (`tokio::net::lookup_host`), as `man/dog.1.md` always said, and the smoke test checks it.
-  On a migration, grep for every `default()` / `new()` of the dependency's types and read what each now returns.
-- **Read the release notes for a major bump.** `actions/checkout` 7 blocks checking out fork PRs under `pull_request_target` and
-  `workflow_run`, which we do not use; `extractions/setup-just` 4 had no notes. A workflow change is tested by its own PR's CI.
-- **`cargo audit` runs in three places:** `security.yml` in CI (push to `master`, PRs touching `Cargo.toml` or `Cargo.lock`, **weekly on
-  Sundays**, manually), which fails on vulnerabilities but not on warnings (unmaintained, unsound, yanked); `just pr`, advisory and only
-  if `cargo-audit` is installed; and by hand. It is **not** part of `CI OK`, so it informs and does not block a merge.
-  **So nothing in CI catches a yanked crate.** tokio 1.54.0 was yanked two days after #40 locked it, and only
-  `cargo publish --dry-run` mentioned it. The release steps in `CONTRIBUTING.md` now check for one before tagging.
-- **`datetime` was removed (2021-04-01 was its last release, no advisory named it).** It was a build dependency whose only use was a
-  build date, reachable only for a release build with a `-pre` version, which `version_gate.py` rejects, so it was dead code. The
-  `--version` string is now just the version, plus a warning on debug builds: no Git hash and no build date, so a build does not need
-  `git` and two builds of one source print the same string. If a date is ever wanted again, use `std` or `jiff`, not a stale crate.
-- `edition = "2018"` is old but is not a dependency.
-
-## Project description
-
-- **One source, many copies.** The description is written once, in `packaging/metadata.toml`: the one-line `summary`, the long
-  `description`, the README `tagline`, the crates.io description, keywords and categories, the GitHub About text and topics, and the COPR
-  page. It still has to be *copied* into each artifact that carries it (crates.io reads `Cargo.toml`, the AUR the PKGBUILD and `.SRCINFO`,
-  COPR's RPM the spec, Homebrew the formula), so the copies stay where they are and **`scripts/metadata_check.py` fails when any copy
-  disagrees**. It runs in `just scripts-check` (so in `just pr`) and in the advisory `Metadata` workflow, which is deliberately separate
-  from `packaging.yml` so that a README-only PR does not start the COPR build. Before this the same description was typed into six places
-  and had drifted until most of them said the same five words.
-- **It proves the copies agree, not that they are right.** Before a release, read the README and `metadata.toml` for claims that are no
-  longer true. Every claim in the README was run against the real binary when it was written: argument order, `--color`, `--seconds`,
-  `-1`, the exit statuses, the `jq` example, and that there is no OpenSSL in the dependency tree. Do the same for a new claim.
-- **Style rules the check enforces** for `summary` and `brew_desc` (what `brew audit`, the AUR and rpmlint expect): at most 80 characters,
-  no trailing full stop, no leading article, and not beginning with the package's own name. `crates.io` is exempt from the article rule.
-  Keywords: at most 5. Categories: at most 5, and each must be a real crates.io slug (`CATEGORIES` in the script: crates.io rejects an
-  unknown one only at publish time, so a typo would otherwise surface on release day).
-- **Two copies live on services, not in files, and are pushed:** the COPR project page by `copr.yml` on a release tag, and the GitHub About
-  box and topics by **`just github-metadata`**, which prints the change, asks, and sets the topics as an exact list. It is public and
-  immediate, so it is run by hand. `just github-metadata` without confirming is a dry run.
-- **`--short` described itself wrongly** ("display nothing but the first result") for as long as the project has existed: the code prints
-  the data of **every** answer. The help, the man page and the README now say what it does. Check what an option does before describing it.
-
-## Packaging
-
-- **Names:** the crate (crates.io) and AUR package are `dogdns`; the COPR project is `kentobias/dog` (RPM name `dog`); the
-  Homebrew tap is `l1a/homebrew-dog`; the Windows Scoop bucket is `l1a/scoop-dog`. The installed binary is `dog` everywhere (`[[bin]] name = "dog"`). The crate is not
-  called `dog` because that name on crates.io is an abandoned Datadog client, so `cargo install dog` fetched the wrong crate.
-  Nothing in `src/` reads the package name, so renaming the crate cannot change behaviour.
-- **Templates record nothing about a release.** `packaging/copr/dog.spec`, `packaging/aur/PKGBUILD.in`, `packaging/aur/SRCINFO.in`, `packaging/homebrew/dog.rb`, and `packaging/scoop/dog.json` carry `@VERSION@`, `@CHANGELOG@`, `@SHA256@`, `@SHA256_X86_64@`, and `@SHA256_ARM64@` sentinels that
-  `scripts/render_packaging.py` fills from `Cargo.toml` at build or publish time. A stale version cannot be committed when no version is
-  committed. The renderer treats a substitution that matches nothing, and a sentinel that survives rendering, as hard errors;
-  `just packaging-check` (`--self-test`) proves each guard can fail.
-- **COPR** builds from the exact commit/tag ref with `make_srpm` (`.copr/Makefile`), using an archive of the checkout as `Source0`, so a PR can build its own SRPM. `copr.yml` rebuilds on a `v[0-9]*` tag (`copr-cli buildscm --commit "$REF"`), fails on `l1a/dog` if the `COPR_*` secrets are absent, and skips cleanly on forks. `scripts/copr_check.py` enforces these invariants; `just copr-render` previews the rendered spec offline. The committed `man/dog.1` is installed directly.
-- **Test the RPM for real, not just the SRPM.** `packaging.yml` runs `make -f .copr/Makefile srpm`, `dnf builddep`, then
-  `rpmbuild --rebuild` (which runs `%build`, `%install` and `%check`), checks the file list, installs it (`rpm -ivh --nodeps --nosignature`, since Fedora 45 / RPM 6 requires a signature by default and a local `rpmbuild` is unsigned) and runs `dog --version`.
-  The same sequence runs locally in `podman run registry.fedoraproject.org/fedora:latest`. Install `git` before anything calls it;
-  the Makefile installs it itself under mock.
-- **`--locked` is load-bearing** in the spec: COPR builds with network access and no vendoring, so `Cargo.lock` is the only thing
-  pinning what is built to what CI tested.
-- **crates.io, AUR (`dogdns`), Homebrew (`l1a/homebrew-dog`), and Windows Scoop (`l1a/scoop-dog`)** are published together once the tag exists via `just publish` (refuses unless `HEAD` matches `v<VERSION>` and tree is clean; `just publish-check` runs `cargo publish --dry-run --locked`). AUR, Homebrew, and Scoop use templates (`packaging/aur/PKGBUILD.in`, `SRCINFO.in`, `packaging/homebrew/dog.rb`, `packaging/scoop/dog.json`) and are published by `scripts/publish_packaging.py` (`just aur-publish [X]` / `just publish-aur [X]`, `just brew-publish [X]` / `just publish-brew [X]`, `just scoop-publish [X]` / `just publish-scoop [X]`, defaulting to `Cargo.toml`'s version).
-  It downloads the tag tarball (or the two Windows release `.zip` archives for Scoop), computes the sha256 from what it got, renders, shows the diff, and requires confirming with the version or `y` (`AUR_CONFIRM=y`, `BREW_CONFIRM=y`, `SCOOP_CONFIRM=y`, or `PUBLISH_CONFIRM=y` non-interactively)
-  before it pushes. It is tested against local bare repositories (`--remote`, `--tarball`, run by `scripts/publish_packaging.py --self-test` in `just scripts-check`). **`.SRCINFO` is never hand-written**:
-  `SRCINFO.in` is derived from `makepkg --printsrcinfo`, and `packaging.yml` fails if the rendered pair disagrees with makepkg.
-- **Never run `just install` (`cargo install --path .`) or `just install-tag` (`cargo install --git ... --tag vX.Y.Z`) during or after a release:** Both replace the crates.io registry entry (`dogdns vX.Y.Z:`) in `~/.cargo/.crates.toml` and `~/.cargo/.crates2.json` with a local path or pinned git tag (preventing `cargo install-update` / `topgrade` / `cgu` from ever updating the crate when a future release is published from another machine) and overwrite chezmoi-managed completion/man-page files in `$HOME`. Update the local binary from crates.io (`cargo install-update` or `cargo install --locked dogdns`) instead.
-- **Arch needs `options=('!lto')`.** makepkg's default LTO flags make the C code that `ring` compiles through the `cc` crate into
-  GCC LTO bytecode, which Rust's linker cannot read, so the build fails at the link with `undefined symbol: ring_core_*`. Found by
-  really building the PKGBUILD in an `archlinux:base-devel` container; parsing it would not have caught it. Fedora's flags differ,
-  so the COPR build never showed it.
-- **A tag's `Cargo.lock` must match its `Cargo.toml`, or every packaged build fails.** All packaging uses `--locked`. The `v0.6.0`
-  tag had a stale lockfile (`0.5.7`; the fix, `2f7d5d4`, landed after the tag), so `cargo fetch --locked` fails on its tarball.
-  `release.yml`'s `verify` job now refuses such a tag. The first packaged release must be a fresh tag.
-- **A template's comments must not contain a sentinel token.** The renderer rewrites every one, so a header that named the
-  placeholders came out as a header quoting a real version and digest. `--self-test` rejects it.
-- **Rootless podman uid mapping leaves host-unwritable files** in any directory a container user (such as makepkg's `builder`) was
-  given ownership of. Do the whole render, build and diff inside the container from a read-only snapshot instead of sharing a
-  writable host directory, or a later host-side write fails and a check silently compares stale files.
-- **Homebrew is verified by `packaging.yml`'s `homebrew` job** (`brew audit --strict`, `brew install --HEAD`, `brew test`) through a
-  throwaway local tap, because Homebrew only installs formulae from a tap. It cannot be run locally here (no brew), so that job
-  is the first real test of the formula. `Homebrew/actions/setup-homebrew` is SHA-pinned. **Since Homebrew 7.0.11
-  (2026-10-26, Homebrew/brew#24352), `brew audit` no longer implicitly trusts a fully-qualified third-party formula** — only
-  `install`/`reinstall`/`upgrade` do — so the job runs `brew trust --formula l1a/test/dog` before audit. Prefer that over
-  trusting the whole throwaway tap. PR #43 failed on audit until this was added.
-- **Scoop is verified by `packaging.yml`'s `scoop` job on `windows-latest`.** Note that `dog --version` emits a trailing blank line, so in PowerShell `$verOut = & dog --version` captures a 2-element `Object[]` (`@("dog ● command-line DNS client vX.Y.Z", "")`), on which `$verOut -notmatch ...` acts as an array filter returning `@("")` (truthy) rather than a boolean; always flatten with `(& dog --version) -join " "` before `-match`/`-notmatch`.
-- Packaging is **not** a required check, so `packaging.yml`, `metadata.yml` and `security.yml` use `paths:` filters on `push` and `pull_request`.
-
-## Sandbox Bypass (`BypassSandbox: true`) & Sandbox Learning Loop
-
-Per `~/AGENTS.md` §6 (**Sandbox Bypass & Sandbox Learning Loop**), always run the following command classes with `BypassSandbox: true` on the **first** attempt — never try them with `BypassSandbox: false` first:
-
-- **All `gh` / `ghpub` commands** (`gh pr ...`, `gh run ...`, `gh workflow ...`, `gh api ...`, `gh issue ...`): require network access to `api.github.com`.
-- **All `git` write or remote commands** (`git checkout -b`, `git switch`, `git branch -d/-D`, `git add`, `git rm`, `git commit`, `git merge`, `git rebase`, `git tag`, `git fetch`, `git pull`, `git push`): `.git/` is mounted read-only in the sandbox and remote ops need network access.
-- **`just` shebang and network/container recipes (`#!/usr/bin/env bash` recipes fail in the sandbox with `/run/user/1000/just: Read-only file system (os error 30)`):**
-  - `just pr` / `PR_CONFIRM=y just pr`, `PR_CONFIRM=y just open-pr --fill`, `just merge-pr`, `just prune-branches`, `just install-tag`
-  - `just smoke-dns` / `scripts/smoke_dns.sh` (queries live DNS at `8.8.8.8` and `dns.google`)
-  - `just github-metadata`, `just aur-publish` / `just publish-aur`, `just brew-publish` / `just publish-brew`, `just scoop-publish` / `just publish-scoop`, `just publish`, `just publish-check`, `just audit`
-  - `just update-deps`, `just coverage-docker`
-- **Cargo network and registry-unpack operations:** `cargo update` (use `cargo --config net.retry=0 update` with `BypassSandbox: true`), `cargo fetch`, `cargo publish`, `cargo audit`, and the first `cargo check`/`build`/`clippy`/`test` whenever a locked crate is missing from `~/.cargo/registry/cache/` **or** not yet unpacked in `~/.cargo/registry/src/` (unpacking into `~/.cargo/registry/src/` fails inside `bwrap` with `Read-only file system (os error 30)`).
-- **Commands that DO work in the sandbox (`BypassSandbox: false`):**
-  - `just`, `just build`, `just build-release`, `just build-quick`, `just check`, `just test`, `just test-release`, `just test-quick`, `just fmt`, `just fmt-check`, `just clippy`, `just lint`, `just standard-check`, `just man`, `just man-check`, `just packaging-check`, `just render-check`, `just copr-check`, `just scoop-check`, `just copr-render`, `just scripts-check`, `just metadata-check`, `just text-check`, `just wip-check`, `just version-check`
-  - Direct `python3 scripts/*.py --self-test` calls
-  - Read-only `git` commands: `git status`, `git diff`, `git log`, `git show`, `git rev-parse`, `git for-each-ref`
-- **Repo-Local Sandbox Learning Loop:**
-  1. **Read before running:** Check this section (plus any staged entries in `WIP.md`) at session start and pass `BypassSandbox: true` on the **first** invocation for every listed command/recipe.
-  2. **Learn on first failure (never fail twice on the same sandbox boundary):** If a command run with `BypassSandbox: false` fails because of a sandbox boundary (`Read-only file system`, `Could not resolve host`, `no connections available`, `Permission denied` on a non-workspace path/socket, or unmounted interpreter), immediately re-run with `BypassSandbox: true` (do not retry with `BypassSandbox: false`).
-  3. **Clean-tree staging (`WIP.md`):** If a new repo-specific sandbox exception is discovered while on `master` or after a PR's final commit is already pushed and waiting to merge (where modifying tracked `AGENTS.md` would dirty the working tree or invalidate CI checks), record it immediately in `WIP.md` under `## Sandbox Exceptions (staged for AGENTS.md)`.
-  4. **Fold into `AGENTS.md` on the next PR:** Promote any staged entries from `WIP.md` into this section of `AGENTS.md` (or `~/AGENTS.md` §6 if universal) in the very next commit/PR and remove the staged section from `WIP.md`.
-
-## Known issues
-
-- TLS configurations may require appropriate system libraries or cross-compilation toolchains depending on the target OS.
+## 5. Known Issues
+- TLS configurations may require system libraries or cross-compilation toolchains depending on target OS.
