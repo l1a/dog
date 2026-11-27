@@ -168,7 +168,7 @@ fn chaos_class_query_and_response() {
         let mut record = Record::from_rdata(
             q.name().clone(),
             0,
-            RData::TXT(TXT::new(vec!["dog-test-chaos-server".to_string()])),
+            RData::TXT(TXT::try_from("dog-test-chaos-server".to_string()).unwrap()),
         );
         record.dns_class = DNSClass::CH;
         resp.add_answer(record);
@@ -377,7 +377,7 @@ fn multiple_responses_render_in_single_aligned_table() {
                     resp.add_answer(Record::from_rdata(
                         name,
                         300,
-                        RData::TXT(TXT::new(vec!["v=spf1 -all".to_string()])),
+                        RData::TXT(TXT::try_from("v=spf1 -all".to_string()).unwrap()),
                     ));
                 }
                 other => panic!("unexpected query type: {}", other),
