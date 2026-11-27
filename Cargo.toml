@@ -21,7 +21,7 @@ exclude = [
     "/.claude", "/WIP.md",
 ]
 license = "GPL-3.0-or-later"
-version = "0.9.5"
+version = "0.9.6"
 
 
 [[bin]]
@@ -45,7 +45,7 @@ panic = "abort"
 
 
 [dependencies]
-hickory-resolver = { version = "0.26.1", features = ["tls-ring", "https-ring", "webpki-roots"] }
+hickory-resolver = { version = "0.26.4", features = ["tls-ring", "https-ring", "webpki-roots"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net"] }
 
 # command-line

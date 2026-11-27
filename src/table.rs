@@ -239,6 +239,7 @@ mod test {
     use super::*;
     use hickory_resolver::proto::rr::rdata::{A, AAAA, MX, NS, TXT};
     use hickory_resolver::proto::rr::{Name, RData};
+    use std::convert::TryFrom;
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::str::FromStr;
 
@@ -288,7 +289,7 @@ mod test {
             &Record::from_rdata(
                 name,
                 300,
-                RData::TXT(TXT::new(vec!["v=spf1 -all".to_string()])),
+                RData::TXT(TXT::try_from("v=spf1 -all".to_string()).unwrap()),
             ),
             Section::Answer,
         );
